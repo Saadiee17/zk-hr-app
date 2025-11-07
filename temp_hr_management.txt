@@ -1,0 +1,1596 @@
+﻿'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { Container, Title, Paper, Tabs, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Alert, Checkbox, Divider, Grid, Collapse, Badge } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { IconPencil, IconTrash, IconCheck, IconX, IconEdit, IconSelector, IconCalendar, IconInfoCircle, IconChevronDown } from '@tabler/icons-react'
+import { useForm } from '@mantine/form'
+import { TimeInput, DatePickerInput, Calendar } from '@mantine/dates'
+import Link from 'next/link'
+import { formatUTC12Hour } from '@/utils/dateFormatting'
+
+export default function HrManagementPage() {
+  // Departments state
+  const [departments, setDepartments] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // Create form
+  const [createName, setCreateName] = useState('')
+  const [createCode, setCreateCode] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  // Edit modal
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editCode, setEditCode] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // Employee Management
+  const [employees, setEmployees] = useState([])
+  const [empLoading, setEmpLoading] = useState(false)
+  const [deptOptions, setDeptOptions] = useState([])
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignEmp, setAssignEmp] = useState(null)
+  const [assignSaving, setAssignSaving] = useState(false)
+
+  // Exception schedule state
+  const [exceptionModalOpen, setExceptionModalOpen] = useState(false)
+  const [exceptions, setExceptions] = useState([])
+  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [currentException, setCurrentException] = useState(null)
+  const [exceptionSaving, setExceptionSaving] = useState(false)
+  const [leaveRequests, setLeaveRequests] = useState([])
+  const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null)
+  const [showLeaveRequestForm, setShowLeaveRequestForm] = useState(false)
+  const [leaveRequestForm, setLeaveRequestForm] = useState({
+    leave_type: 'casual_leave',
+    reason: ''
+  })
+  const [employeeSchedule, setEmployeeSchedule] = useState(null)
+
+  const editForm = useForm({
+    initialValues: {
+      full_name: '',
+      department_id: null,
+      privilege: 0,
+      is_active: true,
+      card_number: '',
+      password: '',
+      individual_tz_1: null,
+      individual_tz_2: null,
+      individual_tz_3: null,
+    },
+    transformValues: (values) => values,
+  })
+
+  const fetchDepartments = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/hr/departments', { method: 'GET' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch departments')
+      setDepartments(json.data || [])
+    } catch (error) {
+      notifications.show({
+        title: 'Load failed',
+        message: error.message || 'Could not load departments',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDepartments()
+  }, [])
+
+  // Employees list (for Employee Management tab)
+  const fetchEmployees = async () => {
+    try {
+      setEmpLoading(true)
+      const res = await fetch('/api/employees')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch employees')
+      setEmployees(json.data || [])
+    } catch (error) {
+      notifications.show({
+        title: 'Load employees failed',
+        message: error.message || 'Could not load employees',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    } finally {
+      setEmpLoading(false)
+    }
+  }
+
+  const fetchDeptOptions = async () => {
+    // Use secure departments endpoint for up-to-date options
+    try {
+      const res = await fetch('/api/hr/departments')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch departments')
+      const opts = (json.data || []).map((d) => ({ value: d.id, label: d.name }))
+      setDeptOptions(opts)
+    } catch (error) {
+      // Non-blocking, modal will show empty options
+      setDeptOptions([])
+    }
+  }
+
+  useEffect(() => {
+    fetchEmployees()
+    fetchDeptOptions()
+  }, [])
+
+  // Time Zones state & helpers for Device Configuration tab
+  const [timeZones, setTimeZones] = useState([])
+  const fetchTimeZones = async () => {
+    try {
+      const res = await fetch('/api/hr/time-zones')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch TZs')
+      setTimeZones(json.data || [])
+    } catch (error) {
+      setTimeZones([])
+    }
+  }
+  useEffect(() => { fetchTimeZones() }, [])
+
+  const tzRows = timeZones.map((tz) => (
+    <Table.Tr key={tz.id}>
+      <Table.Td>{tz.id}</Table.Td>
+      <Table.Td>{tz.name}</Table.Td>
+      <Table.Td style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tz.tz_string}</Table.Td>
+      <Table.Td>
+        <Group gap="xs">
+          <ActionIcon variant="light" color="red" aria-label="Delete" onClick={async () => {
+            try {
+              const res = await fetch(`/api/hr/time-zones/${tz.id}`, { method: 'DELETE' })
+              const json = await res.json().catch(() => ({}))
+              if (!res.ok) throw new Error(json.error || 'Failed to delete TZ')
+              notifications.show({ title: 'Deleted', message: `TZ ${tz.id} removed`, color: 'green', icon: <IconCheck size={18} /> })
+              await fetchTimeZones()
+            } catch (error) {
+              notifications.show({ title: 'Delete failed', message: error.message || 'Could not delete TZ', color: 'red', icon: <IconX size={18} /> })
+            }
+          }}>
+            <IconTrash size={18} />
+          </ActionIcon>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
+  ))
+
+  // Schedule assignment modal state
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleDept, setScheduleDept] = useState(null)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleVals, setScheduleVals] = useState({ tz_id_1: null, tz_id_2: null, tz_id_3: null })
+
+  const tzOptions = timeZones.map((t) => ({ value: String(t.id), label: `${t.id} - ${t.name}` }))
+
+  // Sorting for Employee Management table
+  const [empSort, setEmpSort] = useState({ key: 'name', dir: 'asc' })
+  const toggleEmpSort = (key) => {
+    setEmpSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      }
+      return { key, dir: 'asc' }
+    })
+  }
+  const getSortIndicator = (key) => {
+    if (empSort.key !== key) return <IconSelector size={14} style={{ opacity: 0.4 }} />
+    return empSort.dir === 'asc' ? 'â–²' : 'â–¼'
+  }
+  const safeLower = (v) => (typeof v === 'string' ? v.toLowerCase() : '')
+  const empSorted = [...employees].sort((a, b) => {
+    const dir = empSort.dir === 'asc' ? 1 : -1
+    const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim()
+    const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim()
+    const depA = a?.department?.name || ''
+    const depB = b?.department?.name || ''
+    const schedA = a?.primary_schedule || ''
+    const schedB = b?.primary_schedule || ''
+    const privA = Number(a?.privilege ?? 0)
+    const privB = Number(b?.privilege ?? 0)
+    const zkA = Number(a?.zk_user_id ?? -Infinity)
+    const zkB = Number(b?.zk_user_id ?? -Infinity)
+    const statA = a?.is_active ? 'Enabled' : 'Disabled'
+    const statB = b?.is_active ? 'Enabled' : 'Disabled'
+    switch (empSort.key) {
+      case 'name':
+        return dir * (safeLower(nameA) > safeLower(nameB) ? 1 : safeLower(nameA) < safeLower(nameB) ? -1 : 0)
+      case 'zk':
+        return dir * (zkA - zkB)
+      case 'primary':
+        return dir * (safeLower(schedA) > safeLower(schedB) ? 1 : safeLower(schedA) < safeLower(schedB) ? -1 : 0)
+      case 'department':
+        return dir * (safeLower(depA) > safeLower(depB) ? 1 : safeLower(depA) < safeLower(depB) ? -1 : 0)
+      case 'privilege':
+        return dir * (privA - privB)
+      case 'status':
+        return dir * (safeLower(statA) > safeLower(statB) ? 1 : safeLower(statA) < safeLower(statB) ? -1 : 0)
+      default:
+        return 0
+    }
+  })
+
+  // Schedule Builder state (Sunday -> Saturday)
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const [shiftStart, setShiftStart] = useState('')
+  const [shiftEnd, setShiftEnd] = useState('')
+  const [daySelected, setDaySelected] = useState(days.map(() => false))
+  const tzStringInputRef = useRef(null)
+  const [confirmNightOpen, setConfirmNightOpen] = useState(false)
+
+  // Payroll state
+  const [payrollRange, setPayrollRange] = useState(() => {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - 30)
+    return [start, end]
+  })
+  const [payrollEmployeeId, setPayrollEmployeeId] = useState(null)
+  const [payrollLoading, setPayrollLoading] = useState(false)
+  const [payrollRows, setPayrollRows] = useState([])
+  const [payrollDailyRows, setPayrollDailyRows] = useState([])
+  const [payrollStatusBreakdownOpen, setPayrollStatusBreakdownOpen] = useState(false)
+  const toYMD = (d) => new Date(d).toISOString().slice(0, 10)
+  const generatePayroll = async () => {
+    try {
+      setPayrollLoading(true)
+      setPayrollDailyRows([])
+      const [start, end] = payrollRange || []
+      if (!start || !end) throw new Error('Select a date range')
+      const qs = new URLSearchParams({ start_date: toYMD(start), end_date: toYMD(end) })
+      if (payrollEmployeeId) qs.set('employee_id', payrollEmployeeId)
+      const res = await fetch(`/api/reports/payroll?${qs.toString()}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to generate report')
+      setPayrollRows(json.data || [])
+
+      // If a single employee is selected, also fetch daily detail
+      if (payrollEmployeeId) {
+        const dailyQs = new URLSearchParams({ employee_id: payrollEmployeeId, start_date: toYMD(start), end_date: toYMD(end) })
+        const dailyRes = await fetch(`/api/reports/daily-work-time?${dailyQs.toString()}`)
+        const dailyJson = await dailyRes.json()
+        if (dailyRes.ok && Array.isArray(dailyJson.data)) {
+          setPayrollDailyRows(dailyJson.data)
+        } else {
+          setPayrollDailyRows([])
+        }
+      } else {
+        setPayrollDailyRows([])
+      }
+    } catch (e) {
+      notifications.show({ title: 'Report error', message: e.message || 'Failed to generate report', color: 'red' })
+    } finally {
+      setPayrollLoading(false)
+    }
+  }
+  const toHHMM = (s) => {
+    if (!s || typeof s !== 'string') return '0000'
+    const [hh, mm] = s.split(':')
+    const h = String(parseInt(hh || '0', 10)).padStart(2, '0')
+    const m = String(parseInt(mm || '0', 10)).padStart(2, '0')
+    return `${h}${m}`
+  }
+  const timeToNumber = (t) => {
+    if (!t) return 0
+    const [hh, mm] = t.split(':')
+    return (parseInt(hh || '0', 10) * 100) + (parseInt(mm || '0', 10))
+  }
+
+  const generateString = () => {
+    // Basic validation
+    const hasTimes = Boolean(shiftStart) && Boolean(shiftEnd)
+    const hasDay = daySelected.some(Boolean)
+    if (!hasTimes || !hasDay) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please define the shift time and select at least one day.',
+        color: 'red',
+      })
+      return
+    }
+
+    const segment = `${toHHMM(shiftStart)}${toHHMM(shiftEnd)}`
+    const full = daySelected.map((sel) => (sel ? segment : '00002359')).join('')
+    if (tzStringInputRef.current) {
+      tzStringInputRef.current.value = full
+      tzStringInputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+
+    notifications.show({
+      title: 'Success! TZ String generated',
+      message: 'Review the code and click SAVE to push to the device.',
+      color: 'green',
+    })
+  }
+
+  const buildScheduleTz = () => {
+    const hasTimes = Boolean(shiftStart) && Boolean(shiftEnd)
+    const hasDay = daySelected.some(Boolean)
+    if (!hasTimes || !hasDay) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please define the shift time and select at least one day.',
+        color: 'red',
+      })
+      return
+    }
+
+    const startNum = timeToNumber(shiftStart)
+    const endNum = timeToNumber(shiftEnd)
+    const crossesMidnight = startNum > endNum
+
+    if (crossesMidnight) {
+      setConfirmNightOpen(true)
+      return
+    }
+
+    generateString()
+  }
+
+  const resetCreateForm = () => {
+    setCreateName('')
+    setCreateCode('')
+  }
+
+  const handleCreate = async (e) => {
+    e?.preventDefault?.()
+    try {
+      setCreating(true)
+      const codeInt = createCode === '' ? null : Number(createCode)
+      if (!createName?.trim() || codeInt === null || Number.isNaN(codeInt)) {
+        throw new Error('Name and numeric Department Code are required')
+      }
+
+      const res = await fetch('/api/hr/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim(), department_code: codeInt }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to create department')
+      notifications.show({
+        title: 'Department created',
+        message: `${createName.trim()} was added`,
+        color: 'green',
+        icon: <IconCheck size={18} />,
+      })
+      resetCreateForm()
+      await fetchDepartments()
+    } catch (error) {
+      notifications.show({
+        title: 'Create failed',
+        message: error.message || 'Could not create department',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const openEdit = (dept) => {
+    setEditId(dept.id)
+    setEditName(dept.name || '')
+    setEditCode(String(dept.department_code ?? ''))
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    try {
+      setSavingEdit(true)
+      const codeInt = editCode === '' ? null : Number(editCode)
+      if (!editId || !editName?.trim() || codeInt === null || Number.isNaN(codeInt)) {
+        throw new Error('Name and numeric Department Code are required')
+      }
+
+      const res = await fetch(`/api/hr/departments/${editId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName.trim(), department_code: codeInt }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to update department')
+      notifications.show({
+        title: 'Department updated',
+        message: `${editName.trim()} was saved`,
+        color: 'green',
+        icon: <IconCheck size={18} />,
+      })
+      setEditOpen(false)
+      await fetchDepartments()
+    } catch (error) {
+      notifications.show({
+        title: 'Update failed',
+        message: error.message || 'Could not update department',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleDelete = async (dept) => {
+    try {
+      const res = await fetch(`/api/hr/departments/${dept.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Failed to delete department')
+      notifications.show({
+        title: 'Department deleted',
+        message: `${dept.name} was removed`,
+        color: 'green',
+        icon: <IconCheck size={18} />,
+      })
+      await fetchDepartments()
+    } catch (error) {
+      notifications.show({
+        title: 'Delete failed',
+        message: error.message || 'Could not delete department',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    }
+  }
+
+  const rows = departments.map((d) => (
+    <Table.Tr key={d.id}>
+      <Table.Td>{d.name}</Table.Td>
+      <Table.Td>{d.department_code}</Table.Td>
+      <Table.Td>
+        <Group gap="xs">
+          <ActionIcon variant="light" color="blue" onClick={() => openEdit(d)} aria-label="Edit">
+            <IconPencil size={18} />
+          </ActionIcon>
+          <ActionIcon variant="light" color="red" onClick={() => handleDelete(d)} aria-label="Delete">
+            <IconTrash size={18} />
+          </ActionIcon>
+          <Button size="xs" variant="light" onClick={async () => {
+            try {
+              setScheduleDept(d)
+              // Preload existing schedule
+              const res = await fetch(`/api/hr/schedules/${d.id}`)
+              const json = await res.json()
+              if (res.ok && json?.data) {
+                setScheduleVals({
+                  tz_id_1: json.data.tz_id_1 || null,
+                  tz_id_2: json.data.tz_id_2 || null,
+                  tz_id_3: json.data.tz_id_3 || null,
+                })
+              } else {
+                setScheduleVals({ tz_id_1: null, tz_id_2: null, tz_id_3: null })
+              }
+              setScheduleOpen(true)
+            } catch {
+              setScheduleVals({ tz_id_1: null, tz_id_2: null, tz_id_3: null })
+              setScheduleOpen(true)
+            }
+          }}>Assign Schedule</Button>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
+  ))
+
+  // Employee Management rows
+  const empRows = empSorted.map((e) => (
+    <Table.Tr key={e.id}>
+      <Table.Td>
+        <Link href={`/employees/${e.id}`} style={{ textDecoration: 'none' }}>
+          {`${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'}
+        </Link>
+      </Table.Td>
+      <Table.Td>{e.zk_user_id ?? ''}</Table.Td>
+      <Table.Td>{e?.department?.name || ''}</Table.Td>
+      <Table.Td>{e?.primary_schedule || 'Not Assigned'}</Table.Td>
+      <Table.Td>{e?.privilege_text ?? e?.privilege ?? ''}</Table.Td>
+      <Table.Td>{e?.is_active ? 'Enabled' : 'Disabled'}</Table.Td>
+      <Table.Td>
+        <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
+          setAssignEmp(e)
+          editForm.setValues({
+            full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+            department_id: e.department_id || null,
+            privilege: e.privilege ?? 0,
+            is_active: Boolean(e.is_active),
+            card_number: e.card_number || '',
+            individual_tz_1: e.individual_tz_1 ?? null,
+            individual_tz_2: e.individual_tz_2 ?? null,
+            individual_tz_3: e.individual_tz_3 ?? null,
+          })
+            fetchExceptions(e.id)
+            fetchLeaveRequests(e.id)
+            setAssignOpen(true)
+          }}>
+          <IconEdit size={18} />
+        </ActionIcon>
+      </Table.Td>
+    </Table.Tr>
+  ))
+
+  const fetchExceptions = async (employeeId) => {
+    if (!employeeId) return
+    try {
+      const res = await fetch(`/api/hr/schedule-exceptions?employee_id=${employeeId}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch exceptions')
+      setExceptions(json.data || [])
+    } catch (error) {
+      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+    }
+  }
+
+  const fetchLeaveRequests = async (employeeId) => {
+    if (!employeeId) return
+    try {
+      const res = await fetch(`/api/hr/leave-requests?employee_id=${employeeId}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch leave requests')
+      setLeaveRequests(json.data || [])
+    } catch (error) {
+      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+    }
+  }
+
+  const fetchEmployeeSchedule = async (employeeId) => {
+    if (!employeeId) return
+    try {
+      const res = await fetch(`/api/hr/employee-schedule?employee_id=${employeeId}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch schedule')
+      setEmployeeSchedule(json.data)
+    } catch (error) {
+      console.error('Error fetching schedule:', error)
+      setEmployeeSchedule(null)
+    }
+  }
+
+  const handleCreateLeaveRequest = async () => {
+    if (!assignEmp?.id || !selectedDate) return
+    try {
+      setExceptionSaving(true)
+      const payload = {
+        employee_id: assignEmp.id,
+        leave_type: leaveRequestForm.leave_type,
+        start_date: toYMD(selectedDate),
+        end_date: toYMD(selectedDate),
+        reason: leaveRequestForm.reason || '',
+        status: 'approved', // Auto-approve for HR-created requests
+      }
+      console.log('[handleCreateLeaveRequest] Sending payload:', payload)
+      
+      const res = await fetch('/api/hr/leave-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      console.log('[handleCreateLeaveRequest] Response:', json)
+      
+      if (!res.ok) {
+        const errorMsg = json.error || 'Failed to create leave request'
+        const details = json.details ? ` (${json.details})` : ''
+        throw new Error(errorMsg + details)
+      }
+      notifications.show({ title: 'Success', message: 'Leave request created and approved.', color: 'green' })
+      setShowLeaveRequestForm(false)
+      setLeaveRequestForm({ leave_type: 'casual_leave', reason: '' })
+      await fetchLeaveRequests(assignEmp.id)
+    } catch (error) {
+      console.error('[handleCreateLeaveRequest] Error:', error)
+      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+    } finally {
+      setExceptionSaving(false)
+    }
+  }
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date)
+    const ymd = toYMD(date)
+    const found = exceptions.find(ex => ex.date === ymd)
+    setCurrentException(found || { date: ymd, start_time: '', end_time: '', is_day_off: false, is_half_day: false })
+  }
+
+  const handleSaveException = async () => {
+    if (!assignEmp?.id || !currentException?.date) return
+    try {
+      setExceptionSaving(true)
+      
+      // Ensure we only send primitive values (avoid circular references)
+      const payload = {
+        employee_id: assignEmp.id,
+        date: String(currentException.date || ''),
+        start_time: currentException.is_day_off ? null : (String(currentException.start_time || '').trim() || null),
+        end_time: currentException.is_day_off ? null : (String(currentException.end_time || '').trim() || null),
+        is_day_off: Boolean(currentException.is_day_off || false),
+        is_half_day: Boolean(currentException.is_half_day || false),
+      }
+      
+      const res = await fetch('/api/hr/schedule-exceptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to save exception')
+      notifications.show({ title: 'Success', message: 'Exception saved.', color: 'green' })
+      await fetchExceptions(assignEmp.id)
+    } catch (error) {
+      console.error('[handleSaveException] Error:', error)
+      notifications.show({ title: 'Save Failed', message: error.message, color: 'red' })
+    } finally {
+      setExceptionSaving(false)
+    }
+  }
+  
+  const handleDeleteException = async () => {
+    if (!assignEmp?.id || !currentException?.date) return
+    try {
+      setExceptionSaving(true)
+      const res = await fetch('/api/hr/schedule-exceptions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: assignEmp.id,
+          date: currentException.date,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(()=>({}))
+        throw new Error(json.error || 'Failed to delete exception')
+      }
+      notifications.show({ title: 'Success', message: 'Exception cleared.', color: 'green' })
+      setCurrentException(null)
+      await fetchExceptions(assignEmp.id)
+      handleDateSelect(selectedDate) // Reselect to clear form
+    } catch (error) {
+      notifications.show({ title: 'Delete Failed', message: error.message, color: 'red' })
+    } finally {
+      setExceptionSaving(false)
+    }
+  }
+
+  return (
+    <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
+      <Title order={1} mb="md">HR Management</Title>
+
+      <Paper withBorder shadow="sm" p="md">
+        <Tabs defaultValue="enrollment">
+          <Tabs.List>
+            <Tabs.Tab value="enrollment">Employee Enrollment</Tabs.Tab>
+            <Tabs.Tab value="device">Device Configuration</Tabs.Tab>
+            <Tabs.Tab value="department">Department Management</Tabs.Tab>
+            <Tabs.Tab value="employee">Employee Management</Tabs.Tab>
+            <Tabs.Tab value="payroll">Payroll Reports</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="enrollment" pt="md">
+            <Text c="dimmed">Employee Enrollment content will go here.</Text>
+          </Tabs.Panel>
+          <Tabs.Panel value="device" pt="md">
+            <Stack gap="md">
+              <Title order={4}>Time Zones (TZ) Management</Title>
+              <Alert color="yellow" variant="light" title="IMPORTANT">
+                Use the TZ String Generator below to define your 7-day schedule. Then, copy and paste the generated 56-digit code into the main TZ String field to set the schedule on the ZKTeco device (TZ IDs 1-50).
+              </Alert>
+              <Paper withBorder p="md">
+                <Title order={5} mb="xs">Schedule Builder</Title>
+                <Stack gap="sm">
+                  <Group wrap="wrap" gap="md" align="end">
+                    <TimeInput label="Shift Start" withSeconds={false} value={shiftStart} onChange={(e) => setShiftStart(e.currentTarget.value)} style={{ width: 160 }} />
+                    <TimeInput label="Shift End" withSeconds={false} value={shiftEnd} onChange={(e) => setShiftEnd(e.currentTarget.value)} style={{ width: 160 }} />
+                  </Group>
+                  <Group wrap="wrap" gap="md">
+                    {days.map((d, idx) => (
+                      <Checkbox key={d} label={d} checked={daySelected[idx]} onChange={(e) => {
+                        const checked = e.currentTarget.checked
+                        setDaySelected((prev) => {
+                          const next = [...prev]
+                          next[idx] = checked
+                          return next
+                        })
+                      }} />
+                    ))}
+                  </Group>
+                  <Group>
+                    <Button onClick={buildScheduleTz}>Build</Button>
+                    <Text c="dimmed" size="sm">Click Build to generate and fill the main TZ String field.</Text>
+                  </Group>
+                </Stack>
+              </Paper>
+              <Modal opened={confirmNightOpen} onClose={() => setConfirmNightOpen(false)} title="Night Shift Confirmation">
+                <Stack>
+                  <Text>
+                    The shift times you entered ({shiftStart || '??'} - {shiftEnd || '??'}) span two calendar days. Are you trying to set a Night Shift that crosses midnight?
+                  </Text>
+                  <Group justify="flex-end">
+                    <Button variant="default" onClick={() => {
+                      setConfirmNightOpen(false)
+                      notifications.show({ title: 'Night shift denied', message: 'Please adjust the Start/End times to proceed with a single-day shift.', color: 'red' })
+                    }}>No</Button>
+                    <Button onClick={() => {
+                      setConfirmNightOpen(false)
+                      generateString()
+                    }}>Yes</Button>
+                  </Group>
+                </Stack>
+              </Modal>
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                const form = e.currentTarget
+                const id = Number(form.tz_id.value)
+                const name = form.tz_name.value.trim()
+                const tzstr = form.tz_string.value.trim()
+                try {
+                  if (!Number.isFinite(id) || id < 1 || id > 50) throw new Error('TZ ID must be 1-50')
+                  if (!name || !tzstr) throw new Error('Name and TZ String are required')
+                  const res = await fetch('/api/hr/tz-set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, name, tz_string: tzstr }),
+                  })
+                  const json = await res.json()
+                  if (!res.ok) throw new Error(json.error || 'Failed to save TZ')
+                  notifications.show({ title: 'TZ Saved', message: `TZ ${id} saved & pushed`, color: 'green', icon: <IconCheck size={18} /> })
+                  form.reset()
+                  await fetchTimeZones()
+                } catch (error) {
+                  notifications.show({ title: 'Save failed', message: error.message || 'Could not save TZ', color: 'red', icon: <IconX size={18} /> })
+                }
+              }}>
+                <Group align="end" wrap="wrap" gap="md">
+                  <NumberInput name="tz_id" label="TZ ID (1-50)" min={1} max={50} required style={{ maxWidth: 180 }} />
+                  <TextInput name="tz_name" label="Name" placeholder="Standard Shift 9-5" required style={{ minWidth: 260 }} />
+                  <TextInput name="tz_string" label="TZ String" placeholder="Raw TZ string" required style={{ minWidth: 360, flex: 1 }} ref={tzStringInputRef} />
+                  <Button type="submit">Save & Push</Button>
+                </Group>
+              </form>
+
+              <Paper withBorder>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th fw={600}>TZ ID</Table.Th>
+                      <Table.Th fw={600}>Name</Table.Th>
+                      <Table.Th fw={600}>TZ String</Table.Th>
+                      <Table.Th fw={600} style={{ width: 120 }}>Actions</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {tzRows}
+                    {(!timeZones || timeZones.length === 0) && (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}><Text c="dimmed">No TZs found</Text></Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Paper>
+
+              <Paper withBorder p="md" mt="md">
+                <Stack gap="md">
+                  <Title order={4}>Master Data Synchronization</Title>
+                  <Text c="dimmed" size="sm">
+                    Push all time zones and employee schedules to the K50 device. This will sync all configured time zones and assign schedules to all active employees.
+                  </Text>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        notifications.show({
+                          id: 'sync-start',
+                          title: 'Synchronization Started',
+                          message: 'Pushing time zones and schedules to K50...',
+                          color: 'blue',
+                          loading: true,
+                          autoClose: false,
+                        })
+
+                        const res = await fetch('/api/device/sync-schedules', {
+                          method: 'POST',
+                        })
+                        const json = await res.json()
+
+                        if (!res.ok && res.status !== 207) {
+                          throw new Error(json.error || 'Sync failed')
+                        }
+
+                        const { results } = json
+                        const tzMsg = `TZs: ${results.timeZones.success}/${results.timeZones.total}`
+                        const empMsg = `Employees: ${results.employees.success}/${results.employees.total}`
+                        const hasErrors = results.timeZones.errors.length > 0 || results.employees.errors.length > 0
+
+                        notifications.update({
+                          id: 'sync-start',
+                          title: hasErrors ? 'Sync Completed with Errors' : 'Sync Completed',
+                          message: `${tzMsg}, ${empMsg}`,
+                          color: hasErrors ? 'yellow' : 'green',
+                          icon: hasErrors ? <IconX size={18} /> : <IconCheck size={18} />,
+                          autoClose: 5000,
+                        })
+
+                        if (hasErrors && (results.timeZones.errors.length > 0 || results.employees.errors.length > 0)) {
+                          const errorDetails = []
+                          if (results.timeZones.errors.length > 0) {
+                            errorDetails.push(`TZ Errors: ${results.timeZones.errors.length}`)
+                          }
+                          if (results.employees.errors.length > 0) {
+                            errorDetails.push(`Employee Errors: ${results.employees.errors.length}`)
+                          }
+                          notifications.show({
+                            title: 'Sync Errors',
+                            message: errorDetails.join(', '),
+                            color: 'orange',
+                            icon: <IconX size={18} />,
+                          })
+                        }
+                      } catch (error) {
+                        notifications.update({
+                          id: 'sync-start',
+                          title: 'Sync Failed',
+                          message: error.message || 'Could not sync to device',
+                          color: 'red',
+                          icon: <IconX size={18} />,
+                          autoClose: 5000,
+                        })
+                      }
+                    }}
+                  >
+                    Push All Schedules & Time Zones to K50
+                  </Button>
+                </Stack>
+              </Paper>
+            </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="department" pt="md">
+            <Stack gap="md">
+              <form onSubmit={handleCreate}>
+                <Group align="end" wrap="wrap" gap="md">
+                  <TextInput
+                    label="Department Name"
+                    placeholder="e.g. Human Resources"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.currentTarget.value)}
+                    required
+                    style={{ minWidth: 260 }}
+                  />
+                  <NumberInput
+                    label="Department Code"
+                    placeholder="e.g. 1001"
+                    value={createCode}
+                    onChange={(val) => setCreateCode(val === null ? '' : String(val))}
+                    min={0}
+                    required
+                    style={{ minWidth: 180 }}
+                  />
+                  <Button type="submit" loading={creating} disabled={creating}>
+                    Create Department
+                  </Button>
+                </Group>
+              </form>
+
+              <Paper withBorder>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th fw={600}>Name</Table.Th>
+                      <Table.Th fw={600}>Department Code</Table.Th>
+                      <Table.Th fw={600} style={{ width: 120 }}>Actions</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {rows}
+                    {(!departments || departments.length === 0) && (
+                      <Table.Tr>
+                        <Table.Td colSpan={3}>
+                          <Text c="dimmed">{loading ? 'Loading...' : 'No departments found'}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Paper>
+            </Stack>
+
+            <Modal opened={editOpen} onClose={() => setEditOpen(false)} title="Edit Department">
+              <Stack>
+                <TextInput
+                  label="Department Name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.currentTarget.value)}
+                  required
+                />
+                <NumberInput
+                  label="Department Code"
+                  value={editCode}
+                  onChange={(val) => setEditCode(val === null ? '' : String(val))}
+                  min={0}
+                  required
+                />
+                <Group justify="flex-end">
+                  <Button variant="default" onClick={() => setEditOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveEdit} loading={savingEdit} disabled={savingEdit}>Save</Button>
+                </Group>
+              </Stack>
+            </Modal>
+
+            <Modal opened={scheduleOpen} onClose={() => setScheduleOpen(false)} title={`Assign Schedule${scheduleDept ? `: ${scheduleDept.name}` : ''}`}>
+              <Stack>
+                <Select
+                  label="TZ #1"
+                  placeholder="Select TZ"
+                  data={tzOptions}
+                  value={scheduleVals.tz_id_1 ? String(scheduleVals.tz_id_1) : null}
+                  onChange={(v) => setScheduleVals((s) => ({ ...s, tz_id_1: v ? Number(v) : null }))}
+                  searchable
+                  clearable
+                />
+                <Select
+                  label="TZ #2"
+                  placeholder="Select TZ"
+                  data={tzOptions}
+                  value={scheduleVals.tz_id_2 ? String(scheduleVals.tz_id_2) : null}
+                  onChange={(v) => setScheduleVals((s) => ({ ...s, tz_id_2: v ? Number(v) : null }))}
+                  searchable
+                  clearable
+                />
+                <Select
+                  label="TZ #3"
+                  placeholder="Select TZ"
+                  data={tzOptions}
+                  value={scheduleVals.tz_id_3 ? String(scheduleVals.tz_id_3) : null}
+                  onChange={(v) => setScheduleVals((s) => ({ ...s, tz_id_3: v ? Number(v) : null }))}
+                  searchable
+                  clearable
+                />
+                <Group justify="flex-end">
+                  <Button variant="default" onClick={() => setScheduleOpen(false)}>Cancel</Button>
+                  <Button loading={scheduleSaving} disabled={scheduleSaving} onClick={async () => {
+                    try {
+                      setScheduleSaving(true)
+                      if (!scheduleDept?.id) throw new Error('Missing department id')
+                      const res = await fetch(`/api/hr/schedules/${scheduleDept.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(scheduleVals),
+                      })
+                      const json = await res.json()
+                      if (!res.ok) throw new Error(json.error || 'Failed to assign schedule')
+                      notifications.show({ title: 'Schedule assigned', message: 'Department schedule updated', color: 'green', icon: <IconCheck size={18} /> })
+                      setScheduleOpen(false)
+                    } catch (error) {
+                      notifications.show({ title: 'Schedule failed', message: error.message || 'Could not assign schedule', color: 'red', icon: <IconX size={18} /> })
+                    } finally {
+                      setScheduleSaving(false)
+                    }
+                  }}>Save</Button>
+                </Group>
+              </Stack>
+            </Modal>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="employee" pt="md">
+            <Stack gap="md">
+              <Paper withBorder>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('name')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>Employee</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('name')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('zk')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>ZK User ID</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('zk')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('department')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>Department</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('department')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('primary')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>Primary Schedule</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('primary')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('privilege')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>Privilege</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('privilege')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} onClick={() => toggleEmpSort('status')} style={{ cursor: 'pointer' }}>
+                        <Group justify="space-between" gap={6} wrap="nowrap">
+                          <span>Status</span>
+                          <Text c="dimmed" size="xs">{getSortIndicator('status')}</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th fw={600} style={{ width: 120 }}>Actions</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {empRows}
+                    {(!employees || employees.length === 0) && (
+                      <Table.Tr>
+                        <Table.Td colSpan={3}>
+                          <Text c="dimmed">{empLoading ? 'Loading...' : 'No employees found'}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Paper>
+            </Stack>
+
+            <Modal opened={assignOpen} onClose={() => setAssignOpen(false)} title="Edit Employee">
+              <form onSubmit={editForm.onSubmit(async (values) => {
+                try {
+                  setAssignSaving(true)
+                  if (!assignEmp?.id) throw new Error('Missing employee id')
+                  const [firstName, ...rest] = (values.full_name || '').trim().split(/\s+/)
+                  const lastName = rest.join(' ')
+                  const res = await fetch(`/api/hr/employee-update/${assignEmp.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      first_name: firstName || '',
+                      last_name: lastName || '',
+                      department_id: values.department_id || null,
+                      privilege: Number(values.privilege ?? 0),
+                      is_active: Boolean(values.is_active),
+                      card_number: values.card_number || null,
+                      password: values.password || undefined,
+                      individual_tz_1: values.individual_tz_1 ?? null,
+                      individual_tz_2: values.individual_tz_2 ?? null,
+                      individual_tz_3: values.individual_tz_3 ?? null,
+                    }),
+                  })
+                  const json = await res.json()
+                  if (!res.ok) throw new Error(json.error || 'Failed to save employee')
+                  notifications.show({
+                    title: 'Employee updated',
+                    message: 'Changes saved successfully',
+                    color: 'green',
+                    icon: <IconCheck size={18} />,
+                  })
+                  setAssignOpen(false)
+                  await fetchEmployees()
+                } catch (error) {
+                  notifications.show({
+                    title: 'Update failed',
+                    message: error.message || 'Could not update employee',
+                    color: 'red',
+                    icon: <IconX size={18} />,
+                  })
+                } finally {
+                  setAssignSaving(false)
+                }
+              })}>
+                <Stack>
+                  <TextInput
+                    label="Employee Name"
+                    placeholder="e.g. Jane Doe"
+                    {...editForm.getInputProps('full_name')}
+                    required
+                  />
+                  <Select
+                    label="Department"
+                    placeholder="Select department"
+                    data={deptOptions}
+                    {...editForm.getInputProps('department_id')}
+                    searchable
+                    clearable
+                    nothingFoundMessage="No departments"
+                  />
+                  <Select
+                    label="Privilege"
+                    data={[
+                      { value: '0', label: 'Employee' },
+                      { value: '1', label: 'Registrar' },
+                      { value: '2', label: 'Administrator' },
+                      { value: '3', label: 'Super Admin' },
+                    ]}
+                    {...editForm.getInputProps('privilege')}
+                  />
+                  <Switch
+                    label="Status (Enabled)"
+                    {...editForm.getInputProps('is_active', { type: 'checkbox' })}
+                  />
+                  <TextInput
+                    label="Card Number"
+                    placeholder="Optional"
+                    {...editForm.getInputProps('card_number')}
+                  />
+                  <TextInput
+                    label="Password"
+                    placeholder="Optional (device password)"
+                    {...editForm.getInputProps('password')}
+                  />
+                  
+                  <Divider my="sm" label="Schedule Management" />
+
+                  <Button 
+                    leftSection={<IconCalendar size={14} />} 
+                    variant="outline" 
+                    onClick={() => {
+                      const today = new Date()
+                      setSelectedDate(today)
+                      const ymd = toYMD(today)
+                      const found = exceptions.find(ex => ex.date === ymd)
+                      setCurrentException(found || { date: ymd, start_time: '', end_time: '', is_day_off: false, is_half_day: false })
+                      fetchEmployeeSchedule(assignEmp?.id)
+                      setExceptionModalOpen(true)
+                    }}
+                  >
+                    Manage Exception Schedule
+                  </Button>
+                  <Text c="dimmed" size="xs" mt={-10} mb={10}>
+                    For single-day changes, like a requested day off or a temporary shift change for a specific date.
+                  </Text>
+
+                  <Title order={5}>Individual Weekly Schedule Override (Optional)</Title>
+                  <Text c="dimmed" size="xs" mt={-10} mb={10}>
+                    Use this if the employee permanently follows a different weekly schedule than their department's default.
+                  </Text>
+                  <Select
+                    label="Time Zone 1"
+                    placeholder="Use Department Default"
+                    data={[{ value: '', label: 'Use Department Default' }, ...tzOptions]}
+                    value={editForm.values.individual_tz_1 === null ? '' : String(editForm.values.individual_tz_1)}
+                    onChange={(v) => editForm.setFieldValue('individual_tz_1', v === '' || v === null ? null : Number(v))}
+                    searchable
+                    clearable
+                  />
+                  <Select
+                    label="Time Zone 2"
+                    placeholder="Use Department Default"
+                    data={[{ value: '', label: 'Use Department Default' }, ...tzOptions]}
+                    value={editForm.values.individual_tz_2 === null ? '' : String(editForm.values.individual_tz_2)}
+                    onChange={(v) => editForm.setFieldValue('individual_tz_2', v === '' || v === null ? null : Number(v))}
+                    searchable
+                    clearable
+                  />
+                  <Select
+                    label="Time Zone 3"
+                    placeholder="Use Department Default"
+                    data={[{ value: '', label: 'Use Department Default' }, ...tzOptions]}
+                    value={editForm.values.individual_tz_3 === null ? '' : String(editForm.values.individual_tz_3)}
+                    onChange={(v) => editForm.setFieldValue('individual_tz_3', v === '' || v === null ? null : Number(v))}
+                    searchable
+                    clearable
+                  />
+                  <Group justify="flex-end">
+                    <Button variant="default" onClick={() => setAssignOpen(false)}>Cancel</Button>
+                    <Button type="submit" loading={assignSaving} disabled={assignSaving}>Save</Button>
+                  </Group>
+                </Stack>
+              </form>
+            </Modal>
+
+            <Modal opened={exceptionModalOpen} onClose={() => setExceptionModalOpen(false)} title={`Exception Schedule: ${assignEmp?.first_name || ''} ${assignEmp?.last_name || ''}`.trim()} size="xl">
+              <Grid>
+                <Grid.Col span={{ base: 12, md: 7 }}>
+                  <div style={{ position: 'relative' }}>
+                    <Calendar
+                      value={selectedDate}
+                      onChange={handleDateSelect}
+                      getDayProps={(date) => {
+                        const dateObj = new Date(date)
+                        if (isNaN(dateObj.getTime())) {
+                          return {}
+                        }
+                        const ymd = toYMD(dateObj)
+                        const exception = exceptions.find(ex => ex.date === ymd)
+                        const isSelected = ymd === toYMD(selectedDate)
+                        
+                        // Determine background color priority:
+                        // 1. Selected date gets highlight (unless it's also an exception)
+                        // 2. Exception dates get their color
+                        let backgroundColor = undefined
+                        if (isSelected) {
+                          backgroundColor = exception 
+                            ? (exception.is_day_off ? 'rgba(255, 0, 0, 0.2)' : exception.is_half_day ? 'rgba(255, 165, 0, 0.2)' : 'rgba(0, 0, 255, 0.2)')
+                            : 'rgba(34, 139, 34, 0.2)' // Light green for selected
+                        } else if (exception) {
+                          backgroundColor = exception.is_day_off 
+                            ? 'rgba(255, 0, 0, 0.1)' 
+                            : exception.is_half_day
+                            ? 'rgba(255, 165, 0, 0.1)' // Light orange for half day
+                            : 'rgba(0, 0, 255, 0.1)'
+                        }
+                        
+                        return {
+                          onClick: (e) => {
+                            e.stopPropagation()
+                            handleDateSelect(dateObj)
+                          },
+                          style: {
+                            position: 'relative',
+                            cursor: 'pointer',
+                            backgroundColor: backgroundColor,
+                            border: isSelected ? '2px solid #228B22' : undefined,
+                            borderRadius: isSelected ? '4px' : undefined,
+                            fontWeight: isSelected ? 'bold' : undefined,
+                          }
+                        }
+                      }}
+                    />
+                    <Text size="xs" c="dimmed" mt="xs">
+                      ðŸŸ¢ Green border = Selected â€¢ ðŸ”´ Red = Day Off â€¢ ðŸ”µ Blue = Custom Schedule
+                    </Text>
+                  </div>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 5 }}>
+                  {currentException ? (
+                    <Stack>
+                      <Title order={5}>{selectedDate.toLocaleDateString()}</Title>
+                      
+                      {employeeSchedule && (
+                        <>
+                          <Divider label="Current Schedule" />
+                          <Text size="xs" c="dimmed" mb="xs">
+                            {employeeSchedule.schedule_type === 'individual' ? 'Individual Override' : employeeSchedule.schedule_type === 'department' ? 'Department Default' : 'No Schedule'}
+                            {employeeSchedule.schedule_name && ` â€¢ ${employeeSchedule.schedule_name}`}
+                          </Text>
+                          <Paper p="xs" withBorder>
+                            <Stack gap={4}>
+                              {employeeSchedule.weekly_schedule && employeeSchedule.weekly_schedule.length > 0 ? (
+                                employeeSchedule.weekly_schedule.map((day, idx) => (
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <Text fw={day.isWorking ? 500 : 400} c={day.isWorking ? undefined : 'dimmed'}>
+                                      {day.day}
+                                    </Text>
+                                    {day.isWorking ? (
+                                      <Text size="xs" c="dimmed">
+                                        {day.startTime} - {day.endTime}
+                                      </Text>
+                                    ) : (
+                                      <Text size="xs" c="dimmed" fs="italic">Day Off</Text>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <Text size="xs" c="dimmed" fs="italic">No schedule assigned</Text>
+                              )}
+                            </Stack>
+                          </Paper>
+                        </>
+                      )}
+                      
+                      <Divider label="Leave Request (Optional)" />
+                      <Text size="xs" c="dimmed">Link this exception to a formal leave request or create a new one.</Text>
+                      
+                      {!showLeaveRequestForm ? (
+                        <Stack gap="xs">
+                          <Select
+                            label="Link to Existing Leave Request"
+                            placeholder="Select a leave request or create new"
+                            data={leaveRequests
+                              .filter(lr => lr.status === 'approved' || lr.status === 'pending')
+                              .map(lr => {
+                                // Handle Supabase join: leave_types might be an object or array
+                                const leaveType = Array.isArray(lr.leave_types) 
+                                  ? lr.leave_types[0] 
+                                  : lr.leave_types
+                                const leaveTypeName = leaveType?.name || leaveType?.code || 'Unknown'
+                                return {
+                                  value: lr.id,
+                                  label: `${leaveTypeName} - ${lr.start_date} (${lr.status})`
+                                }
+                              })}
+                            value={selectedLeaveRequest}
+                            onChange={setSelectedLeaveRequest}
+                            clearable
+                          />
+                          <Button size="xs" variant="light" onClick={() => setShowLeaveRequestForm(true)}>
+                            + Create New Leave Request
+                          </Button>
+                        </Stack>
+                      ) : (
+                        <Stack gap="xs">
+                          <Select
+                            label="Leave Type"
+                            data={[
+                              { value: 'casual_leave', label: 'Casual Leave' },
+                              { value: 'sick_leave', label: 'Sick Leave' },
+                              { value: 'early_off', label: 'Early Off' },
+                              { value: 'late_in', label: 'Late In' },
+                            ]}
+                            value={leaveRequestForm.leave_type}
+                            onChange={(v) => setLeaveRequestForm(f => ({ ...f, leave_type: v }))}
+                          />
+                          <TextInput
+                            label="Reason (Optional)"
+                            placeholder="Medical appointment, personal, etc."
+                            value={leaveRequestForm.reason || ''}
+                            onChange={(e) => {
+                              const value = e?.currentTarget?.value ?? e?.target?.value ?? (typeof e === 'string' ? e : '')
+                              setLeaveRequestForm(f => ({ ...f, reason: value }))
+                            }}
+                          />
+                          <Group>
+                            <Button size="xs" variant="default" onClick={() => setShowLeaveRequestForm(false)}>
+                              Cancel
+                            </Button>
+                            <Button size="xs" onClick={handleCreateLeaveRequest} loading={exceptionSaving}>
+                              Create & Approve
+                            </Button>
+                          </Group>
+                        </Stack>
+                      )}
+                      
+                      <Divider label="Schedule Override" />
+                      
+                      <Switch
+                        label="Day Off"
+                        checked={currentException.is_day_off || false}
+                        onChange={(checked) => setCurrentException(c => ({ ...c, is_day_off: checked, is_half_day: checked ? false : c.is_half_day }))}
+                      />
+                      <Switch
+                        label="Half Day"
+                        checked={currentException.is_half_day || false}
+                        onChange={(checked) => setCurrentException(c => ({ ...c, is_half_day: checked, is_day_off: checked ? false : c.is_day_off }))}
+                        disabled={currentException.is_day_off}
+                        description="Calculate half the regular hours for this day"
+                      />
+                      <Group grow>
+                        <TimeInput
+                          label="Start Time"
+                          value={currentException.start_time || ''}
+                          onChange={(e) => {
+                            let value = ''
+                            if (e instanceof Date) {
+                              // Mantine TimeInput can pass Date directly
+                              const hours = String(e.getHours()).padStart(2, '0')
+                              const minutes = String(e.getMinutes()).padStart(2, '0')
+                              value = `${hours}:${minutes}`
+                            } else if (typeof e === 'string') {
+                              value = e
+                            } else if (e?.currentTarget?.value) {
+                              value = e.currentTarget.value
+                            } else if (e?.target?.value) {
+                              value = e.target.value
+                            }
+                            setCurrentException(c => ({ ...c, start_time: value }))
+                          }}
+                          disabled={currentException.is_day_off}
+                        />
+                        <TimeInput
+                          label="End Time"
+                          value={currentException.end_time || ''}
+                          onChange={(e) => {
+                            let value = ''
+                            if (e instanceof Date) {
+                              // Mantine TimeInput can pass Date directly
+                              const hours = String(e.getHours()).padStart(2, '0')
+                              const minutes = String(e.getMinutes()).padStart(2, '0')
+                              value = `${hours}:${minutes}`
+                            } else if (typeof e === 'string') {
+                              value = e
+                            } else if (e?.currentTarget?.value) {
+                              value = e.currentTarget.value
+                            } else if (e?.target?.value) {
+                              value = e.target.value
+                            }
+                            setCurrentException(c => ({ ...c, end_time: value }))
+                          }}
+                          disabled={currentException.is_day_off}
+                        />
+                      </Group>
+                      <Group justify="flex-end">
+                        <Button variant="outline" color="red" onClick={handleDeleteException} loading={exceptionSaving}>
+                          Clear Exception
+                        </Button>
+                        <Button onClick={handleSaveException} loading={exceptionSaving}>
+                          Save Exception
+                        </Button>
+                      </Group>
+                    </Stack>
+                  ) : (
+                    <Text c="dimmed">Select a date to set an exception.</Text>
+                  )}
+                </Grid.Col>
+              </Grid>
+            </Modal>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="payroll" pt="md">
+            <Stack gap="md">
+              <Group align="end" wrap="wrap" gap="md">
+                <DatePickerInput
+                  type="range"
+                  label="Reporting Period"
+                  placeholder="Pick range"
+                  value={payrollRange}
+                  onChange={setPayrollRange}
+                  clearable
+                />
+                <Select
+                  label="Employee"
+                  placeholder="All employees"
+                  data={(employees || []).map((e) => ({ value: e.id, label: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id }))}
+                  value={payrollEmployeeId}
+                  onChange={setPayrollEmployeeId}
+                  searchable
+                  clearable
+                />
+                <Button onClick={generatePayroll} loading={payrollLoading}>Generate Report</Button>
+              </Group>
+
+              <Paper withBorder>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th fw={600}>Employee</Table.Th>
+                      <Table.Th fw={600}>Total Days Worked</Table.Th>
+                      <Table.Th fw={600}>Total Regular Hours</Table.Th>
+                      <Table.Th fw={600}>Total Overtime Hours</Table.Th>
+                      <Table.Th fw={600}>Total Hours Worked</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {payrollRows.map((r, idx) => (
+                      <Table.Tr key={idx}>
+                        <Table.Td>{r.employee_name}</Table.Td>
+                        <Table.Td>{r.total_days_worked}</Table.Td>
+                        <Table.Td>{r.total_regular_hours ?? '-'}</Table.Td>
+                        <Table.Td>{r.total_overtime_hours ?? '-'}</Table.Td>
+                        <Table.Td>{r.total_hours_worked}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                    {(!payrollRows || payrollRows.length === 0) && (
+                      <Table.Tr>
+                        <Table.Td colSpan={5}><Text c="dimmed">No data</Text></Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Paper>
+
+              {/* Status Breakdown Guide */}
+              <Paper withBorder p="md">
+                <Alert
+                  icon={<IconInfoCircle size={18} />}
+                  title="Status Breakdown Guide"
+                  color="blue"
+                  onClick={() => setPayrollStatusBreakdownOpen(!payrollStatusBreakdownOpen)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Group justify="space-between">
+                    <Text size="sm" fw={500}>Click to view status definitions</Text>
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPayrollStatusBreakdownOpen(!payrollStatusBreakdownOpen)
+                      }}
+                    >
+                      <IconChevronDown
+                        size={16}
+                        style={{
+                          transform: payrollStatusBreakdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.2s',
+                        }}
+                      />
+                    </ActionIcon>
+                  </Group>
+                </Alert>
+                <Collapse in={payrollStatusBreakdownOpen} mt="md">
+                  <Stack gap="xs">
+                    <Group gap="md">
+                      <Badge color="green" variant="light" size="lg">On-Time</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee punched in on time (within grace period) for a scheduled shift
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="orange" variant="light" size="lg">Late-In</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee punched in late (beyond grace period) for a scheduled shift
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="blue" variant="light" size="lg">Present</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee punched in/out but no shift was scheduled for that day (worked on unscheduled day)
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="yellow" variant="light" size="lg">Half Day</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee worked on a scheduled half-day exception (regular hours calculated at 50% of shift)
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="violet" variant="light" size="lg">On Leave</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee had approved leave and no punches recorded for that day
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="red" variant="light" size="lg">Absent</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee did not punch in and a shift was scheduled (no approved leave)
+                      </Text>
+                    </Group>
+                    <Group gap="md">
+                      <Badge color="grape" variant="light" size="lg">Out of Schedule</Badge>
+                      <Text size="sm" style={{ flex: 1 }}>
+                        Employee punched in/out but at times outside the scheduled shift window (e.g., punched at 11 AM when shift is 8 PM - 5 AM)
+                      </Text>
+                    </Group>
+                  </Stack>
+                </Collapse>
+              </Paper>
+
+              <Paper withBorder>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th fw={600}>Date</Table.Th>
+                      <Table.Th fw={600}>In Time</Table.Th>
+                      <Table.Th fw={600}>Out Time</Table.Th>
+                      <Table.Th fw={600}>Regular Hours</Table.Th>
+                      <Table.Th fw={600}>Overtime Hours</Table.Th>
+                      <Table.Th fw={600}>Status</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {payrollDailyRows.map((d, idx) => (
+                      <Table.Tr key={idx}>
+                        <Table.Td>{d.date}</Table.Td>
+                        <Table.Td>{d.inTime ? formatUTC12Hour(d.inTime) : '-'}</Table.Td>
+                        <Table.Td>{d.outTime ? formatUTC12Hour(d.outTime) : '-'}</Table.Td>
+                        <Table.Td>{d.regularHours ?? 0}</Table.Td>
+                        <Table.Td>{d.overtimeHours ?? 0}</Table.Td>
+                        <Table.Td>
+                          <Badge
+                            color={
+                              d.status === 'On-Time' ? 'green' :
+                              d.status === 'Late-In' ? 'orange' :
+                              d.status === 'Present' ? 'blue' :
+                              d.status === 'On Leave' ? 'violet' :
+                              d.status === 'Half Day' ? 'yellow' :
+                              d.status === 'Out of Schedule' ? 'grape' :
+                              d.status === 'Absent' ? 'red' : 'gray'
+                            }
+                            variant="light"
+                          >
+                            {d.status || 'Unknown'}
+                          </Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                    {(!payrollEmployeeId || payrollDailyRows.length === 0) && (
+                      <Table.Tr>
+                        <Table.Td colSpan={6}>
+                          <Text c="dimmed">{!payrollEmployeeId ? 'Select an employee and generate to view daily details' : 'No daily details'}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Paper>
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+      </Paper>
+    </Container>
+  )
+}
+
+
