@@ -2,12 +2,23 @@
 
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { useParams } from 'next/navigation'
-import { Container, Title, Paper, Group, Text, Table, LoadingOverlay, Stack, Divider, Progress, RingProgress, Grid, Badge, Card, Alert, Collapse, ActionIcon, Select, Modal, TextInput, Button, Switch } from '@mantine/core'
-import { IconInfoCircle, IconChevronDown, IconChevronRight, IconEdit, IconCheck, IconX, IconCalendar } from '@tabler/icons-react'
+import { Container, Title, Paper, Group, Text, Table, LoadingOverlay, Stack, Divider, Progress, RingProgress, Grid, Badge, Card, Alert, Collapse, ActionIcon, Select, Modal, TextInput, Button, Switch, Tooltip } from '@mantine/core'
+import { IconInfoCircle, IconChevronDown, IconChevronRight, IconEdit, IconCheck, IconX, IconCalendar, IconUser, IconBuilding, IconId, IconClock, IconMail, IconPhone, IconBriefcase, IconShield, IconBadge } from '@tabler/icons-react'
 import { DatePickerInput, Calendar, TimeInput } from '@mantine/dates'
 import { notifications } from '@mantine/notifications'
 import { useForm } from '@mantine/form'
 import { formatUTC12Hour, formatUTC12HourTime } from '@/utils/dateFormatting'
+
+// Helper function to convert decimal hours to "Xh Ym" format
+const formatHoursMinutes = (decimalHours) => {
+  if (!decimalHours || decimalHours === 0) return '0h'
+  const hours = Math.floor(decimalHours)
+  const minutes = Math.round((decimalHours - hours) * 60)
+  if (minutes === 0) {
+    return `${hours}h`
+  }
+  return `${hours}h ${minutes}m`
+}
 
 export default function EmployeeProfilePage() {
   const params = useParams()
@@ -21,11 +32,13 @@ export default function EmployeeProfilePage() {
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [statusFilter, setStatusFilter] = useState('')
   const [dateRange, setDateRange] = useState(() => {
+    // Default to this month
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
     const end = new Date()
-    const start = new Date()
-    start.setDate(end.getDate() - 30)
     return [start, end]
   })
+  const [dateFilter, setDateFilter] = useState('this-month')
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignSaving, setAssignSaving] = useState(false)
   const [deptOptions, setDeptOptions] = useState([])
@@ -160,6 +173,7 @@ export default function EmployeeProfilePage() {
     fetchEmployee()
     fetchDeptOptions()
     fetchTimeZones()
+    fetchEmployeeSchedule(employeeId)
   }, [employeeId])
 
   useEffect(() => {
@@ -169,18 +183,38 @@ export default function EmployeeProfilePage() {
 
   const profileItems = useMemo(() => {
     if (!employee) return []
+    
+    // Format schedule information
+    let scheduleValue = 'N/A'
+    if (employeeSchedule) {
+      if (employeeSchedule.schedule_name) {
+        const scheduleType = employeeSchedule.schedule_type === 'individual' ? 'Individual Override' : 
+                           employeeSchedule.schedule_type === 'department' ? 'Department Default' : 
+                           'No Schedule'
+        scheduleValue = `${scheduleType}: ${employeeSchedule.schedule_name}`
+      } else {
+        scheduleValue = employeeSchedule.schedule_type === 'individual' ? 'Individual Override (No Name)' : 
+                       employeeSchedule.schedule_type === 'department' ? 'Department Default (No Name)' : 
+                       'No Schedule'
+      }
+    } else if (employee.primary_schedule && employee.primary_schedule !== 'Not Assigned') {
+      // Fallback to primary_schedule if employeeSchedule is not loaded yet
+      scheduleValue = employee.primary_schedule
+    }
+    
     return [
       { label: 'Name', value: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() },
       { label: 'Department', value: employee?.department?.name || 'N/A' },
       { label: 'Employee ID', value: employee.employee_id || 'N/A' },
       { label: 'ZK User ID', value: employee.zk_user_id ?? 'N/A' },
+      { label: 'Schedule', value: scheduleValue },
       { label: 'Status', value: employee.is_active ? 'Enabled' : 'Disabled' },
       { label: 'Email', value: employee.email || 'N/A' },
       { label: 'Phone', value: employee.phone || 'N/A' },
       { label: 'Position', value: employee.position || 'N/A' },
       { label: 'Privilege', value: employee.privilege_text || employee.privilege || 'N/A' },
     ]
-  }, [employee])
+  }, [employee, employeeSchedule])
 
   // Calculate adherence metrics
   const adherenceMetrics = useMemo(() => {
@@ -440,8 +474,9 @@ export default function EmployeeProfilePage() {
               {r.outTime ? formatUTC12HourTime(r.outTime) : '-'}
             </Text>
           </Table.Td>
-          <Table.Td>{r.regularHours ?? 0}</Table.Td>
-          <Table.Td>{r.overtimeHours ?? 0}</Table.Td>
+          <Table.Td>{formatHoursMinutes(r.regularHours ?? 0)}</Table.Td>
+          <Table.Td>{formatHoursMinutes(r.overtimeHours ?? 0)}</Table.Td>
+          <Table.Td>{formatHoursMinutes((r.regularHours ?? 0) + (r.overtimeHours ?? 0))}</Table.Td>
           <Table.Td>
             <Badge
               color={
@@ -462,7 +497,7 @@ export default function EmployeeProfilePage() {
         </Table.Tr>
         {isExpanded && (
           <Table.Tr key={`${uniqueKey}-expanded`}>
-            <Table.Td colSpan={6} style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+            <Table.Td colSpan={7} style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
               <Paper p="md" withBorder>
                 <Stack gap="xs">
                   <Group justify="space-between">
@@ -503,15 +538,15 @@ export default function EmployeeProfilePage() {
                     </Grid.Col>
                     <Grid.Col span={6}>
                       <Text size="xs" c="dimmed">Regular Hours</Text>
-                      <Text fw={500}>{r.regularHours ?? 0}h</Text>
+                      <Text fw={500}>{formatHoursMinutes(r.regularHours ?? 0)}</Text>
                     </Grid.Col>
                     <Grid.Col span={6}>
                       <Text size="xs" c="dimmed">Overtime Hours</Text>
-                      <Text fw={500}>{r.overtimeHours ?? 0}h</Text>
+                      <Text fw={500}>{formatHoursMinutes(r.overtimeHours ?? 0)}</Text>
                     </Grid.Col>
                     <Grid.Col span={12}>
                       <Text size="xs" c="dimmed">Total Duration</Text>
-                      <Text fw={500}>{r.durationHours ?? 0}h</Text>
+                      <Text fw={500}>{formatHoursMinutes(r.durationHours ?? 0)}</Text>
                     </Grid.Col>
                   </Grid>
                 </Stack>
@@ -557,24 +592,184 @@ export default function EmployeeProfilePage() {
         <LoadingOverlay visible={loading} />
         {employee ? (
           <Stack>
-            <Group wrap="wrap" gap="xl">
-              {profileItems.map((it) => (
-                <div key={it.label}>
-                  <Text size="xs" c="dimmed">{it.label}</Text>
-                  <Text fw={600}>{it.value}</Text>
+            {/* Employee Details Section */}
+            <Paper withBorder p="md" radius="md" style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+              <Title order={3} mb="md" size="h4">Employee Information</Title>
+              <Grid gutter="md">
+                {profileItems.map((it) => {
+                  // Map labels to icons
+                  const getIcon = (label) => {
+                    switch (label) {
+                      case 'Name': return <IconUser size={18} />
+                      case 'Department': return <IconBuilding size={18} />
+                      case 'Employee ID': return <IconId size={18} />
+                      case 'ZK User ID': return <IconBadge size={18} />
+                      case 'Schedule': return <IconClock size={18} />
+                      case 'Status': return <IconShield size={18} />
+                      case 'Email': return <IconMail size={18} />
+                      case 'Phone': return <IconPhone size={18} />
+                      case 'Position': return <IconBriefcase size={18} />
+                      case 'Privilege': return <IconShield size={18} />
+                      default: return null
+                    }
+                  }
+                  
+                  // Determine if value should be highlighted
+                  const isHighlighted = it.label === 'Name' || it.label === 'Status'
+                  const isStatus = it.label === 'Status'
+                  
+                  return (
+                    <Grid.Col key={it.label} span={{ base: 12, sm: 6, md: 4 }}>
+                      <Group gap="xs" align="flex-start">
+                        <div style={{ 
+                          color: 'var(--mantine-color-gray-6)',
+                          marginTop: '2px'
+                        }}>
+                          {getIcon(it.label)}
                 </div>
-              ))}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text size="xs" c="dimmed" fw={500} mb={4}>
+                            {it.label}
+                          </Text>
+                          {isStatus ? (
+                            <Badge 
+                              color={it.value === 'Enabled' ? 'green' : 'red'} 
+                              variant="light"
+                              size="sm"
+                            >
+                              {it.value}
+                            </Badge>
+                          ) : (
+                            <Text 
+                              fw={isHighlighted ? 700 : 600} 
+                              size={isHighlighted ? "md" : "sm"}
+                              c={it.value === 'N/A' ? 'dimmed' : undefined}
+                              style={{ wordBreak: 'break-word' }}
+                            >
+                              {it.value}
+                            </Text>
+                          )}
+                        </div>
             </Group>
+                    </Grid.Col>
+                  )
+                })}
+              </Grid>
+            </Paper>
             <Divider my="sm" />
-            <Group align="end" gap="md" wrap="wrap">
+            <Stack gap="md">
+              {/* Quick Date Filters */}
+              <div>
+                <Text size="sm" fw={500} mb="xs">Quick Filters</Text>
+                <Group gap="xs" wrap="wrap">
+                  <Button
+                    variant={dateFilter === 'today' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date()
+                      today.setHours(0, 0, 0, 0)
+                      setDateRange([today, today])
+                      setDateFilter('today')
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    variant={dateFilter === 'yesterday' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      const yesterday = new Date()
+                      yesterday.setDate(yesterday.getDate() - 1)
+                      yesterday.setHours(0, 0, 0, 0)
+                      setDateRange([yesterday, yesterday])
+                      setDateFilter('yesterday')
+                    }}
+                  >
+                    Yesterday
+                  </Button>
+                  <Button
+                    variant={dateFilter === 'this-week' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      const now = new Date()
+                      const startOfWeek = new Date(now)
+                      const day = startOfWeek.getDay()
+                      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday as start of week
+                      startOfWeek.setDate(diff)
+                      startOfWeek.setHours(0, 0, 0, 0)
+                      setDateRange([startOfWeek, now])
+                      setDateFilter('this-week')
+                    }}
+                  >
+                    This Week
+                  </Button>
+                  <Button
+                    variant={dateFilter === 'last-week' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      const now = new Date()
+                      const startOfThisWeek = new Date(now)
+                      const day = startOfThisWeek.getDay()
+                      const diff = startOfThisWeek.getDate() - day + (day === 0 ? -6 : 1)
+                      startOfThisWeek.setDate(diff)
+                      startOfThisWeek.setHours(0, 0, 0, 0)
+                      const endOfLastWeek = new Date(startOfThisWeek)
+                      endOfLastWeek.setDate(endOfLastWeek.getDate() - 1)
+                      const startOfLastWeek = new Date(endOfLastWeek)
+                      startOfLastWeek.setDate(startOfLastWeek.getDate() - 6)
+                      setDateRange([startOfLastWeek, endOfLastWeek])
+                      setDateFilter('last-week')
+                    }}
+                  >
+                    Last Week
+                  </Button>
+                  <Button
+                    variant={dateFilter === 'this-month' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      const now = new Date()
+                      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+                      setDateRange([start, now])
+                      setDateFilter('this-month')
+                    }}
+                  >
+                    This Month
+                  </Button>
+                  <Button
+                    variant={dateFilter === 'custom' ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => {
+                      setDateFilter('custom')
+                    }}
+                  >
+                    Custom
+                  </Button>
+                </Group>
+              </div>
+              
+              {/* Custom Date Picker (shown when custom is selected) */}
+              {dateFilter === 'custom' && (
               <DatePickerInput
                 type="range"
-                label="Reporting Period"
+                  label="Custom Date Range"
                 placeholder="Pick range"
                 value={dateRange}
-                onChange={setDateRange}
+                  onChange={(range) => {
+                    setDateRange(range)
+                    if (range && range[0] && range[1]) {
+                      setDateFilter('custom')
+                    } else {
+                      // If cleared, reset to this month
+                      const now = new Date()
+                      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+                      setDateRange([start, now])
+                      setDateFilter('this-month')
+                    }
+                  }}
                 clearable
               />
+              )}
+              
               <Select
                 label="Filter by Status"
                 placeholder="All Statuses"
@@ -584,119 +779,277 @@ export default function EmployeeProfilePage() {
                 clearable
                 style={{ minWidth: 200 }}
               />
-            </Group>
+            </Stack>
 
             {/* Adherence Metrics Visualization */}
             {reportRows.length > 0 && (
-              <Paper withBorder p="md" mt="md">
+              <Paper withBorder p="md" mt="md" radius="md">
                 <Stack gap="md">
-                  <Title order={4}>Attendance Adherence</Title>
-                  <Grid>
-                    <Grid.Col span={{ base: 12, md: 4 }}>
-                      <Card withBorder p="md" h="100%">
-                        <Stack gap="xs" align="center">
-                          <Text size="sm" c="dimmed" ta="center">On-Time Adherence</Text>
+                  <div>
+                    <Title order={4} mb={4}>Attendance Adherence</Title>
+                    <Text size="sm" c="dimmed">Performance overview for the selected period</Text>
+                  </div>
+                  
+                  <Grid gutter="md">
+                    {/* On-Time Adherence Card - Compact */}
+                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+                      <Card withBorder p="md" radius="md" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Stack gap="md" align="center" justify="center" style={{ flex: 1, minHeight: 0 }}>
+                          <Text size="xs" c="dimmed" fw={500} ta="center" style={{ letterSpacing: '0.5px' }}>
+                            On-Time Rate
+                          </Text>
                           <RingProgress
-                            size={120}
-                            thickness={12}
+                            size={140}
+                            thickness={14}
                             sections={[
-                              { value: adherenceMetrics.adherence, color: adherenceMetrics.adherence >= 80 ? 'green' : adherenceMetrics.adherence >= 60 ? 'yellow' : 'red' },
+                              { 
+                                value: adherenceMetrics.adherence, 
+                                color: adherenceMetrics.adherence >= 80 ? 'teal' : adherenceMetrics.adherence >= 60 ? 'yellow' : 'red' 
+                              },
                             ]}
                             label={
-                              <Text ta="center" fw={700} size="lg">
+                              <div style={{ textAlign: 'center' }}>
+                                <Text ta="center" fw={700} size="xl" style={{ lineHeight: 1.2 }}>
                                 {adherenceMetrics.adherence}%
                               </Text>
+                              </div>
                             }
                           />
-                          <Text size="xs" c="dimmed" ta="center">
-                            {adherenceMetrics.onTime} of {adherenceMetrics.totalDays} days
+                          <div style={{ textAlign: 'center', width: '100%' }}>
+                            <Text size="sm" fw={600} mb={2}>
+                              {adherenceMetrics.onTime} / {adherenceMetrics.totalDays}
                           </Text>
+                            <Text size="xs" c="dimmed">
+                              days on-time
+                            </Text>
+                          </div>
                         </Stack>
                       </Card>
                     </Grid.Col>
-                    <Grid.Col span={{ base: 12, md: 4 }}>
-                      <Card withBorder p="md" h="100%">
+                    
+                    {/* Status Breakdown Card - Simplified */}
+                    <Grid.Col span={{ base: 12, sm: 6, md: 5 }}>
+                      <Card withBorder p="md" radius="md" style={{ height: '100%' }}>
                         <Stack gap="md">
-                          <Text size="sm" c="dimmed" fw={600}>Status Breakdown</Text>
+                          <Group justify="space-between" align="flex-start">
+                            <div>
+                              <Text size="sm" fw={600} mb="xs">Status Breakdown</Text>
+                              <Text size="xs" c="dimmed">Attendance distribution</Text>
+                            </div>
+                            <Tooltip label="View status definitions" withArrow>
+                              <ActionIcon
+                                variant="subtle"
+                                size="sm"
+                                color="gray"
+                                onClick={() => setStatusBreakdownOpen(!statusBreakdownOpen)}
+                              >
+                                <IconInfoCircle size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                          
+                          {statusBreakdownOpen && (
+                            <Paper p="xs" withBorder radius="sm" style={{ backgroundColor: 'var(--mantine-color-blue-0)' }}>
+                              <Collapse in={statusBreakdownOpen}>
+                                <Stack gap={4}>
+                                  <Text size="xs" fw={600} mb={4}>Status Definitions:</Text>
+                                  <Text size="xs"><strong>On-Time:</strong> Punched in within grace period</Text>
+                                  <Text size="xs"><strong>Late-In:</strong> Punched in after grace period</Text>
+                                  <Text size="xs"><strong>Present:</strong> Worked on unscheduled day</Text>
+                                  <Text size="xs"><strong>Absent:</strong> No punch, shift scheduled</Text>
+                                  <Text size="xs"><strong>On Leave:</strong> Approved leave, no punches</Text>
+                                  <Text size="xs"><strong>Half Day:</strong> Scheduled half-day exception</Text>
+                                </Stack>
+                              </Collapse>
+                            </Paper>
+                          )}
+                          
                           <Stack gap="xs">
-                            <Group justify="space-between">
+                            <Group justify="space-between" p="xs" style={{ 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
                               <Group gap="xs">
-                                <Badge color="green" variant="light" size="lg">On-Time</Badge>
+                                <div style={{ 
+                                  width: '8px', 
+                                  height: '8px', 
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--mantine-color-teal-6)'
+                                }} />
+                                <Text size="sm">On-Time</Text>
                               </Group>
-                              <Text fw={600}>{adherenceMetrics.onTime}</Text>
+                              <Group gap="md">
+                                <Text size="sm" fw={600}>{adherenceMetrics.onTime}</Text>
+                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100) : 0}%
+                                </Text>
                             </Group>
-                            <Group justify="space-between">
+                            </Group>
+                            
+                            <Group justify="space-between" p="xs" style={{ 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
                               <Group gap="xs">
-                                <Badge color="orange" variant="light" size="lg">Late-In</Badge>
+                                <div style={{ 
+                                  width: '8px', 
+                                  height: '8px', 
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--mantine-color-orange-6)'
+                                }} />
+                                <Text size="sm">Late-In</Text>
                               </Group>
-                              <Text fw={600}>{adherenceMetrics.lateIn}</Text>
+                              <Group gap="md">
+                                <Text size="sm" fw={600}>{adherenceMetrics.lateIn}</Text>
+                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100) : 0}%
+                                </Text>
                             </Group>
-                            <Group justify="space-between">
+                            </Group>
+                            
+                            <Group justify="space-between" p="xs" style={{ 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
                               <Group gap="xs">
-                                <Badge color="blue" variant="light" size="lg">Present</Badge>
+                                <div style={{ 
+                                  width: '8px', 
+                                  height: '8px', 
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--mantine-color-blue-6)'
+                                }} />
+                                <Text size="sm">Present</Text>
                               </Group>
-                              <Text fw={600}>{adherenceMetrics.present}</Text>
+                              <Group gap="md">
+                                <Text size="sm" fw={600}>{adherenceMetrics.present}</Text>
+                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.present / adherenceMetrics.totalDays) * 100) : 0}%
+                                </Text>
                             </Group>
-                            <Group justify="space-between">
+                            </Group>
+                            
+                            <Group justify="space-between" p="xs" style={{ 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
                               <Group gap="xs">
-                                <Badge color="red" variant="light" size="lg">Absent</Badge>
+                                <div style={{ 
+                                  width: '8px', 
+                                  height: '8px', 
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--mantine-color-red-6)'
+                                }} />
+                                <Text size="sm">Absent</Text>
                               </Group>
-                              <Text fw={600}>{adherenceMetrics.absent}</Text>
+                              <Group gap="md">
+                                <Text size="sm" fw={600}>{adherenceMetrics.absent}</Text>
+                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.absent / adherenceMetrics.totalDays) * 100) : 0}%
+                                </Text>
                             </Group>
-                            <Group justify="space-between">
+                            </Group>
+                            
+                            {adherenceMetrics.onLeave > 0 && (
+                              <Group justify="space-between" p="xs" style={{ 
+                                borderRadius: '6px',
+                                backgroundColor: 'var(--mantine-color-gray-0)'
+                              }}>
                               <Group gap="xs">
-                                <Badge color="violet" variant="light" size="lg">On Leave</Badge>
+                                  <div style={{ 
+                                    width: '8px', 
+                                    height: '8px', 
+                                    borderRadius: '50%',
+                                    backgroundColor: 'var(--mantine-color-violet-6)'
+                                  }} />
+                                  <Text size="sm">On Leave</Text>
                               </Group>
-                              <Text fw={600}>{adherenceMetrics.onLeave || 0}</Text>
+                                <Group gap="md">
+                                  <Text size="sm" fw={600}>{adherenceMetrics.onLeave || 0}</Text>
+                                  <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                    {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100) : 0}%
+                                  </Text>
                             </Group>
+                              </Group>
+                            )}
+                            
                             {adherenceMetrics.halfDay > 0 && (
-                              <Group justify="space-between">
+                              <Group justify="space-between" p="xs" style={{ 
+                                borderRadius: '6px',
+                                backgroundColor: 'var(--mantine-color-gray-0)'
+                              }}>
                                 <Group gap="xs">
-                                  <Badge color="yellow" variant="light" size="lg">Half Day</Badge>
+                                  <div style={{ 
+                                    width: '8px', 
+                                    height: '8px', 
+                                    borderRadius: '50%',
+                                    backgroundColor: 'var(--mantine-color-yellow-6)'
+                                  }} />
+                                  <Text size="sm">Half Day</Text>
                                 </Group>
-                                <Text fw={600}>{adherenceMetrics.halfDay || 0}</Text>
+                                <Group gap="md">
+                                  <Text size="sm" fw={600}>{adherenceMetrics.halfDay || 0}</Text>
+                                  <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
+                                    {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100) : 0}%
+                                  </Text>
+                                </Group>
                               </Group>
                             )}
                           </Stack>
+                          
                           <Divider />
+                          
                           <Group justify="space-between">
-                            <Text size="sm" fw={600}>Total Days</Text>
-                            <Text fw={700} size="lg">{adherenceMetrics.totalDays}</Text>
+                            <Text size="sm" fw={500}>Total Days</Text>
+                            <Text fw={700} size="md">{adherenceMetrics.totalDays}</Text>
                           </Group>
                         </Stack>
                       </Card>
                     </Grid.Col>
-                    <Grid.Col span={{ base: 12, md: 4 }}>
-                      <Card withBorder p="md" h="100%">
+                    
+                    {/* Hours Summary Card - Simplified */}
+                    <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+                      <Card withBorder p="md" radius="md" style={{ height: '100%' }}>
                         <Stack gap="md">
-                          <Text size="sm" c="dimmed" fw={600}>Hours Summary</Text>
+                          <div>
+                            <Text size="sm" fw={600} mb="xs">Hours Summary</Text>
+                            <Text size="xs" c="dimmed">Work hours breakdown</Text>
+                          </div>
+                          
                           <Stack gap="sm">
                             <div>
                               <Group justify="space-between" mb={4}>
                                 <Text size="sm">Regular Hours</Text>
-                                <Text fw={600}>{adherenceMetrics.totalRegularHours}h</Text>
+                                <Text fw={600} size="sm">{formatHoursMinutes(adherenceMetrics.totalRegularHours)}</Text>
                               </Group>
                               <Progress
                                 value={adherenceMetrics.totalHours > 0 ? (adherenceMetrics.totalRegularHours / adherenceMetrics.totalHours) * 100 : 0}
                                 color="blue"
-                                size="md"
+                                size="sm"
+                                radius="sm"
                               />
                             </div>
+                            
                             <div>
                               <Group justify="space-between" mb={4}>
                                 <Text size="sm">Overtime Hours</Text>
-                                <Text fw={600}>{adherenceMetrics.totalOvertimeHours}h</Text>
+                                <Text fw={600} size="sm">{formatHoursMinutes(adherenceMetrics.totalOvertimeHours)}</Text>
                               </Group>
                               <Progress
                                 value={adherenceMetrics.totalHours > 0 ? (adherenceMetrics.totalOvertimeHours / adherenceMetrics.totalHours) * 100 : 0}
                                 color="orange"
-                                size="md"
+                                size="sm"
+                                radius="sm"
                               />
                             </div>
+                            
                             <Divider />
-                            <Group justify="space-between">
+                            
+                            <Group justify="space-between" p="xs" style={{ 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
                               <Text size="sm" fw={600}>Total Hours</Text>
-                              <Text fw={700} size="lg">{adherenceMetrics.totalHours}h</Text>
+                              <Text fw={700} size="md">{formatHoursMinutes(adherenceMetrics.totalHours)}</Text>
                             </Group>
                           </Stack>
                         </Stack>
@@ -704,166 +1057,130 @@ export default function EmployeeProfilePage() {
                     </Grid.Col>
                   </Grid>
 
-                  {/* Status Distribution Bar Chart */}
-                  <Paper withBorder p="md" mt="md">
-                    <Text size="sm" c="dimmed" fw={600} mb="sm">Status Distribution</Text>
-                    <Stack gap="xs">
+                  {/* Status Distribution - Compact Grid */}
                       {adherenceMetrics.totalDays > 0 && (
-                        <>
                           <div>
-                            <Group justify="space-between" mb={4}>
-                              <Text size="xs">On-Time</Text>
-                              <Text size="xs" fw={600}>{Math.round((adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100)}%</Text>
-                            </Group>
+                      <Text size="sm" fw={600} mb="sm">Status Distribution</Text>
+                      <Grid gutter="xs">
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <div style={{ 
+                            padding: '8px', 
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--mantine-color-gray-0)'
+                          }}>
+                            <Text size="xs" c="dimmed" mb={4}>On-Time</Text>
+                            <Text size="lg" fw={700} mb={4}>
+                              {Math.round((adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100)}%
+                            </Text>
                             <Progress
                               value={(adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100}
-                              color="green"
-                              size="lg"
+                              color="teal"
+                              size="sm"
+                              radius="sm"
                             />
                           </div>
-                          <div>
-                            <Group justify="space-between" mb={4}>
-                              <Text size="xs">Late-In</Text>
-                              <Text size="xs" fw={600}>{Math.round((adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100)}%</Text>
-                            </Group>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <div style={{ 
+                            padding: '8px', 
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--mantine-color-gray-0)'
+                          }}>
+                            <Text size="xs" c="dimmed" mb={4}>Late-In</Text>
+                            <Text size="lg" fw={700} mb={4}>
+                              {Math.round((adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100)}%
+                            </Text>
                             <Progress
                               value={(adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100}
                               color="orange"
-                              size="lg"
+                              size="sm"
+                              radius="sm"
                             />
                           </div>
-                          <div>
-                            <Group justify="space-between" mb={4}>
-                              <Text size="xs">Present</Text>
-                              <Text size="xs" fw={600}>{Math.round((adherenceMetrics.present / adherenceMetrics.totalDays) * 100)}%</Text>
-                            </Group>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <div style={{ 
+                            padding: '8px', 
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--mantine-color-gray-0)'
+                          }}>
+                            <Text size="xs" c="dimmed" mb={4}>Present</Text>
+                            <Text size="lg" fw={700} mb={4}>
+                              {Math.round((adherenceMetrics.present / adherenceMetrics.totalDays) * 100)}%
+                            </Text>
                             <Progress
                               value={(adherenceMetrics.present / adherenceMetrics.totalDays) * 100}
                               color="blue"
-                              size="lg"
+                              size="sm"
+                              radius="sm"
                             />
                           </div>
-                          <div>
-                            <Group justify="space-between" mb={4}>
-                              <Text size="xs">Absent</Text>
-                              <Text size="xs" fw={600}>{Math.round((adherenceMetrics.absent / adherenceMetrics.totalDays) * 100)}%</Text>
-                            </Group>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <div style={{ 
+                            padding: '8px', 
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--mantine-color-gray-0)'
+                          }}>
+                            <Text size="xs" c="dimmed" mb={4}>Absent</Text>
+                            <Text size="lg" fw={700} mb={4}>
+                              {Math.round((adherenceMetrics.absent / adherenceMetrics.totalDays) * 100)}%
+                            </Text>
                             <Progress
                               value={(adherenceMetrics.absent / adherenceMetrics.totalDays) * 100}
                               color="red"
-                              size="lg"
+                              size="sm"
+                              radius="sm"
                             />
                           </div>
+                        </Grid.Col>
                           {adherenceMetrics.onLeave > 0 && (
-                            <div>
-                              <Group justify="space-between" mb={4}>
-                                <Text size="xs">On Leave</Text>
-                                <Text size="xs" fw={600}>{Math.round((adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100)}%</Text>
-                              </Group>
+                          <Grid.Col span={{ base: 6, sm: 3 }}>
+                            <div style={{ 
+                              padding: '8px', 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
+                              <Text size="xs" c="dimmed" mb={4}>On Leave</Text>
+                              <Text size="lg" fw={700} mb={4}>
+                                {Math.round((adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100)}%
+                              </Text>
                               <Progress
                                 value={(adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100}
                                 color="violet"
-                                size="lg"
+                                size="sm"
+                                radius="sm"
                               />
                             </div>
+                          </Grid.Col>
                           )}
                           {adherenceMetrics.halfDay > 0 && (
-                            <div>
-                              <Group justify="space-between" mb={4}>
-                                <Text size="xs">Half Day</Text>
-                                <Text size="xs" fw={600}>{Math.round((adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100)}%</Text>
-                              </Group>
+                          <Grid.Col span={{ base: 6, sm: 3 }}>
+                            <div style={{ 
+                              padding: '8px', 
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--mantine-color-gray-0)'
+                            }}>
+                              <Text size="xs" c="dimmed" mb={4}>Half Day</Text>
+                              <Text size="lg" fw={700} mb={4}>
+                                {Math.round((adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100)}%
+                              </Text>
                               <Progress
                                 value={(adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100}
                                 color="yellow"
-                                size="lg"
+                                size="sm"
+                                radius="sm"
                               />
                             </div>
+                          </Grid.Col>
                           )}
-                        </>
+                      </Grid>
+                    </div>
                       )}
-                    </Stack>
-                  </Paper>
                 </Stack>
               </Paper>
             )}
 
-            {/* Status Breakdown Guide */}
-            <Paper withBorder p="md" mt="md">
-              <Alert
-                icon={<IconInfoCircle size={18} />}
-                title="Status Breakdown Guide"
-                color="blue"
-                onClick={() => setStatusBreakdownOpen(!statusBreakdownOpen)}
-                style={{ cursor: 'pointer' }}
-              >
-                <Group justify="space-between">
-                  <Text size="sm" fw={500}>Click to view status definitions</Text>
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setStatusBreakdownOpen(!statusBreakdownOpen)
-                    }}
-                  >
-                    <IconChevronDown
-                      size={16}
-                      style={{
-                        transform: statusBreakdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                        transition: 'transform 0.2s',
-                      }}
-                    />
-                  </ActionIcon>
-                </Group>
-              </Alert>
-              <Collapse in={statusBreakdownOpen} mt="md">
-                <Stack gap="xs">
-                  <Group gap="md">
-                    <Badge color="green" variant="light" size="lg">On-Time</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee punched in on time (within grace period) for a scheduled shift
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="orange" variant="light" size="lg">Late-In</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee punched in late (beyond grace period) for a scheduled shift
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="blue" variant="light" size="lg">Present</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee punched in/out but no shift was scheduled for that day (worked on unscheduled day)
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="yellow" variant="light" size="lg">Half Day</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee worked on a scheduled half-day exception (regular hours calculated at 50% of shift)
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="violet" variant="light" size="lg">On Leave</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee had approved leave and no punches recorded for that day
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="red" variant="light" size="lg">Absent</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee did not punch in and a shift was scheduled (no approved leave)
-                    </Text>
-                  </Group>
-                  <Group gap="md">
-                    <Badge color="grape" variant="light" size="lg">Out of Schedule</Badge>
-                    <Text size="sm" style={{ flex: 1 }}>
-                      Employee punched in/out but at times outside the scheduled shift window (e.g., punched at 11 AM when shift is 8 PM - 5 AM)
-                    </Text>
-                  </Group>
-                </Stack>
-              </Collapse>
-            </Paper>
 
             <Paper withBorder p="sm" pos="relative" mt="md">
               <LoadingOverlay visible={reportLoading} />
@@ -875,6 +1192,7 @@ export default function EmployeeProfilePage() {
                     <Table.Th>Out Time</Table.Th>
                     <Table.Th>Regular Hours</Table.Th>
                     <Table.Th>Overtime Hours</Table.Th>
+                    <Table.Th>Total Hours</Table.Th>
                     <Table.Th>Status</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -889,12 +1207,12 @@ export default function EmployeeProfilePage() {
                   {rows}
                   {(!reportRows || reportRows.length === 0) && (
                     <Table.Tr>
-                      <Table.Td colSpan={6}><Text c="dimmed">No records</Text></Table.Td>
+                      <Table.Td colSpan={7}><Text c="dimmed">No records</Text></Table.Td>
                     </Table.Tr>
                   )}
                   {reportRows.length > 0 && filteredRows.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={6}><Text c="dimmed">No records match the selected filter</Text></Table.Td>
+                      <Table.Td colSpan={7}><Text c="dimmed">No records match the selected filter</Text></Table.Td>
                     </Table.Tr>
                   )}
                 </Table.Tbody>

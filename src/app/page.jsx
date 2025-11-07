@@ -15,7 +15,9 @@ import {
   Pagination,
   Modal,
   Badge,
-  Stack
+  Stack,
+  Grid,
+  Card
 } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import { notifications } from '@mantine/notifications'
@@ -336,10 +338,86 @@ export default function Home() {
                   yesterdayRow.inTime !== null && 
                   (yesterdayRow.outTime === null || yesterdayRow.outTime === yesterdayRow.inTime)
                 
-                // If todayRow has punches, use it (new shift started today)
+                // If todayRow has punches, check if it's actually a valid IN punch for today's shift
+                // For night shifts, early morning punches (e.g., 7 AM) might be yesterday's OUT punch, not today's IN punch
                 if (todayRow.inTime !== null) {
-                  r = todayRow
-                  console.log(`[Metrics] ${e.first_name} ${e.last_name}: Today's shift has punches (inTime: ${todayRow.inTime}), using today's row`)
+                  // Check if this punch is suspiciously early for a night shift
+                  // Get shift start hour to determine if punch is before shift start
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      const isNightShift = scheduleLower.includes('night')
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12
+                      } else if (isDayShift && startHour < 12) {
+                        if (startHour === 12) startHour = 12
+                      } else if (!isNightShift && !isDayShift) {
+                        if (startHour >= 12) {
+                          // Already PM
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          startHour += 12
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Day shift
+                        }
+                      }
+                      return startHour
+                    }
+                    return null
+                  }
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const punchTime = new Date(todayRow.inTime)
+                  const pakistanPunchTime = new Date(punchTime.getTime() + 5 * 60 * 60 * 1000)
+                  const punchHour = pakistanPunchTime.getUTCHours()
+                  const punchMinute = pakistanPunchTime.getUTCMinutes()
+                  const punchTimeMinutes = punchHour * 60 + punchMinute
+                  
+                  // If shift start hour is determined and punch is before shift start, check if it's yesterday's OUT or early punch-in
+                  // For night shifts:
+                  // - Early morning punches (7 AM before 7 PM = 12 hours before) = likely yesterday's OUT
+                  // - Afternoon/evening punches (6 PM before 8 PM = 2 hours before) = likely early punch-in for today
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (punchTimeMinutes < shiftStartMinutes) {
+                      // Punch is before shift start - determine if it's yesterday's OUT or early punch-in
+                      const timeBeforeShiftStart = shiftStartMinutes - punchTimeMinutes
+                      const hoursBeforeShiftStart = timeBeforeShiftStart / 60
+                      
+                      // Check if yesterday's shift is completed
+                      const completedYesterdayShift = yesterdayRow && 
+                        yesterdayRow.inTime !== null && 
+                        yesterdayRow.outTime !== null && 
+                        yesterdayRow.outTime !== yesterdayRow.inTime
+                      
+                      // If punch is more than 6 hours before shift start AND yesterday's shift ended, it's likely yesterday's OUT
+                      // Otherwise, if punch is within 6 hours of shift start, it's likely an early punch-in for today
+                      const isLikelyYesterdayOut = completedYesterdayShift && hoursBeforeShiftStart > 6
+                      
+                      if (isLikelyYesterdayOut) {
+                        // This is yesterday's OUT punch, not today's IN
+                        console.log(`[Metrics] ${e.first_name} ${e.last_name}: Early punch (${punchHour}:${String(punchMinute).padStart(2, '0')}) is ${hoursBeforeShiftStart.toFixed(1)} hours before shift start (${shiftStartHour}:00), treating as yesterday's OUT punch. Ignoring todayRow.inTime.`)
+                        // Fall through to check if shift has started (will check shift start time below)
+                      } else {
+                        // This is an early punch-in for today's shift - use todayRow
+                        r = todayRow
+                        console.log(`[Metrics] ${e.first_name} ${e.last_name}: Early punch-in (${punchHour}:${String(punchMinute).padStart(2, '0')}) is ${hoursBeforeShiftStart.toFixed(1)} hours before shift start (${shiftStartHour}:00), treating as early punch-in for today. Using todayRow.`)
+                      }
+                    } else {
+                      // Punch is after shift start - valid IN punch for today
+                      r = todayRow
+                      console.log(`[Metrics] ${e.first_name} ${e.last_name}: Today's shift has punches (inTime: ${todayRow.inTime}), using today's row`)
+                    }
+                  } else {
+                    // Can't determine shift start - use todayRow as is
+                    r = todayRow
+                    console.log(`[Metrics] ${e.first_name} ${e.last_name}: Today's shift has punches (inTime: ${todayRow.inTime}), using today's row`)
+                  }
                 } else if (isStillWorkingYesterday) {
                   // TodayRow has no punches, but they're still working yesterday's shift
                   // They're still working yesterday's shift - use yesterday's row for today's metrics
@@ -347,7 +425,77 @@ export default function Home() {
                   r = yesterdayRow
                 } else if (todayRow.status === 'Absent' && todayRow.inTime === null && todayRow.outTime === null) {
                   // This is a scheduled shift with no punches
-                  if (workingDayEnabled) {
+                  // Check if shift start time has passed
+                  // Parse schedule name to get shift start hour (handles "Day 12-8", "Night 8-5", "Security 7-7", etc.)
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      
+                      // Check if it's explicitly a night shift
+                      const isNightShift = scheduleLower.includes('night')
+                      // Check if it's explicitly a day shift
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      // For night shifts, if start hour is < 12, it's PM (e.g., "Night 8-5" means 8 PM = 20:00)
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12 // Convert to 24-hour format (8 PM = 20:00)
+                      } 
+                      // For day shifts, if start hour is >= 12, it's PM, otherwise AM
+                      else if (isDayShift && startHour < 12) {
+                        // Day shift with hour < 12 is AM (e.g., "Day 9-5" means 9 AM)
+                        // But "Day 12-8" means 12 PM (noon)
+                        if (startHour === 12) {
+                          startHour = 12 // 12 PM (noon)
+                        }
+                        // Otherwise keep as is (AM)
+                      }
+                      // For schedules without "Night" or "Day" keyword (e.g., "Security 7-7")
+                      // Use heuristic: if start hour < end hour and both are reasonable, it's likely a day shift
+                      // If start hour > end hour or start hour is 7+ in evening context, it's likely a night shift
+                      else if (!isNightShift && !isDayShift) {
+                        // Heuristic: If start hour is 7 or higher and end hour is much lower (e.g., 7-7, 8-5, 10-7),
+                        // it's likely a night shift (7 PM to 7 AM, 8 PM to 5 AM, etc.)
+                        // Also, if start hour >= 12, it's already PM
+                        if (startHour >= 12) {
+                          // Already PM (e.g., "Security 19-7" would be 7 PM to 7 AM)
+                          // Keep as is
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          // Start hour is 7+ and end hour is less or equal (e.g., "Security 7-7", "Night 8-5")
+                          // For "7-7", if both are the same and >= 7, it's likely a night shift (7 PM to 7 AM)
+                          // This is likely a night shift starting in PM
+                          startHour += 12 // Convert to 24-hour format (7 PM = 19:00, 8 PM = 20:00)
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Start hour is 7+ and end hour is 12+ (e.g., "Security 7-19" would be 7 AM to 7 PM)
+                          // This is likely a day shift, keep as is (AM)
+                        }
+                        // Otherwise, assume it's a day shift (AM)
+                      }
+                      return startHour
+                    }
+                    return null
+                  }
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const pakistanHour = pakistanNow.getUTCHours()
+                  const pakistanMinute = pakistanNow.getUTCMinutes()
+                  const currentTimeMinutes = pakistanHour * 60 + pakistanMinute
+                  
+                  // If we can determine shift start time and current time is before shift start, skip (shift hasn't started)
+                  // Otherwise, use todayRow (they're absent - shift has started but they haven't punched in)
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (currentTimeMinutes < shiftStartMinutes) {
+                      // Shift hasn't started yet - skip from metrics (will show as "Shift Not Started" in department list)
+                      console.log(`[Metrics] ${e.first_name} ${e.last_name}: Shift hasn't started yet (current: ${pakistanHour}:${String(pakistanMinute).padStart(2, '0')}, shift starts: ${shiftStartHour}:00), skipping absent status`)
+                      return null
+                    }
+                    // Shift has started - they're absent
+                    r = todayRow
+                  } else if (workingDayEnabled) {
                     // With working day enabled, if we're still in the current working day,
                     // their shift might not have started yet - mark as "Shift Not Started" instead of "Absent"
                     // The API will handle this, but we can skip here to avoid marking as absent
@@ -587,6 +735,45 @@ export default function Home() {
               const todayRow = rows.find(row => row.date === pakistanDateStr)
               const yesterdayRow = rows.find(row => row.date === yesterdayStr)
               
+              // Also fetch recent logs to check for unmatched punches
+              // This helps when a new punch hasn't been matched to a shift yet
+              let latestLog = null
+              try {
+                const logsRes = await fetch(`/api/logs/filter?employee_id=${e.id}&limit=5`)
+                const logsJson = await logsRes.json().catch(() => ({ data: [] }))
+                if (logsRes.ok && logsJson.data && logsJson.data.length > 0) {
+                  // Find the first log that actually belongs to this employee
+                  // The API might return logs from other employees, so we need to validate
+                  latestLog = logsJson.data.find(log => {
+                    // Check if log belongs to this employee by comparing employee_id or zk_user_id
+                    const logEmployeeId = log.employee_id
+                    const logZkUserId = log.zk_user_id
+                    return (logEmployeeId === e.id) || (logZkUserId && e.zk_user_id && logZkUserId === e.zk_user_id)
+                  })
+                  
+                  if (latestLog) {
+                    // Check if this log is from today and hasn't been matched yet
+                    const logTime = new Date(latestLog.log_time)
+                    const pakistanLogTime = new Date(logTime.getTime() + 5 * 60 * 60 * 1000)
+                    const logDateStr = pakistanLogTime.toISOString().slice(0, 10)
+                    if (logDateStr === pakistanDateStr) {
+                      // This is a punch from today - check if it's been matched to todayRow
+                      const isMatched = todayRow && todayRow.inTime && 
+                        Math.abs(new Date(todayRow.inTime).getTime() - logTime.getTime()) < 5 * 60 * 1000 // Within 5 minutes
+                      
+                      if (!isMatched && (!todayRow || !todayRow.inTime)) {
+                        // This punch hasn't been matched yet - use it as today's punch
+                        // This handles the case where someone just punched in but the API hasn't processed it yet
+                        latestLog.isUnmatched = true
+                      }
+                    }
+                  }
+                }
+              } catch (logErr) {
+                // Ignore log fetch errors - not critical
+                console.warn(`[DeptList] Failed to fetch logs for ${e.first_name} ${e.last_name}:`, logErr)
+              }
+              
               let r = null
               let status = 'No Schedule'
               let inTime = null
@@ -599,68 +786,543 @@ export default function Home() {
                   yesterdayRow.inTime !== null && 
                   (yesterdayRow.outTime === null || yesterdayRow.outTime === yesterdayRow.inTime)
                 
-                // If todayRow has punches, use it (new shift started today)
+                // If todayRow has punches, check if it's actually a valid IN punch for today's shift
+                // For night shifts, early morning punches (e.g., 7 AM) might be yesterday's OUT punch, not today's IN punch
                 if (todayRow.inTime !== null) {
-                  r = todayRow
+                  // Check if this punch is suspiciously early for a night shift
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      const isNightShift = scheduleLower.includes('night')
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12
+                      } else if (isDayShift && startHour < 12) {
+                        if (startHour === 12) startHour = 12
+                      } else if (!isNightShift && !isDayShift) {
+                        if (startHour >= 12) {
+                          // Already PM
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          startHour += 12
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Day shift
+                        }
+                      }
+                      return startHour
+                    }
+                    return null
+                  }
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const punchTime = new Date(todayRow.inTime)
+                  const pakistanPunchTime = new Date(punchTime.getTime() + 5 * 60 * 60 * 1000)
+                  const punchHour = pakistanPunchTime.getUTCHours()
+                  const punchMinute = pakistanPunchTime.getUTCMinutes()
+                  const punchTimeMinutes = punchHour * 60 + punchMinute
+                  
+                  // If shift start hour is determined and punch is before shift start, check if it's yesterday's OUT or early punch-in
+                  // For night shifts:
+                  // - Early morning punches (7 AM before 7 PM = 12 hours before) = likely yesterday's OUT
+                  // - Afternoon/evening punches (6 PM before 8 PM = 2 hours before) = likely early punch-in for today
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (punchTimeMinutes < shiftStartMinutes) {
+                      // Punch is before shift start - determine if it's yesterday's OUT or early punch-in
+                      const timeBeforeShiftStart = shiftStartMinutes - punchTimeMinutes
+                      const hoursBeforeShiftStart = timeBeforeShiftStart / 60
+                      
+                      // Check if yesterday's shift is completed
+                      const completedYesterdayShift = yesterdayRow && 
+                        yesterdayRow.inTime !== null && 
+                        yesterdayRow.outTime !== null && 
+                        yesterdayRow.outTime !== yesterdayRow.inTime
+                      
+                      // If punch is more than 6 hours before shift start AND yesterday's shift ended, it's likely yesterday's OUT
+                      // Otherwise, if punch is within 6 hours of shift start, it's likely an early punch-in for today
+                      const isLikelyYesterdayOut = completedYesterdayShift && hoursBeforeShiftStart > 6
+                      
+                      if (isLikelyYesterdayOut) {
+                        // This is yesterday's OUT punch, not today's IN
+                        // Check if shift has started to determine status
+                        const currentTimeMinutes = pakistanNow.getUTCHours() * 60 + pakistanNow.getUTCMinutes()
+                        if (currentTimeMinutes < shiftStartMinutes) {
+                          // Shift hasn't started yet
+                          status = 'Shift Not Started'
+                          return { employee: e, status, inTime: null }
+                        } else {
+                          // Shift has started but they haven't punched in yet (the early punch was yesterday's OUT)
+                          status = 'Absent'
+                          return { employee: e, status, inTime: null }
+                        }
+                      } else {
+                        // This is an early punch-in for today's shift - use todayRow
+                        r = todayRow
+                      }
+                    } else {
+                      // Punch is after shift start - valid IN punch for today
+                      r = todayRow
+                    }
+                  } else {
+                    // Can't determine shift start - use todayRow as is
+                    r = todayRow
+                  }
                 } else if (isStillWorkingYesterday) {
                   // TodayRow has no punches, but they're still working yesterday's shift
                   r = yesterdayRow
                 } else if (todayRow.status === 'Absent' && todayRow.inTime === null && todayRow.outTime === null) {
-                  if (workingDayEnabled) {
-                    // With working day enabled, if shift hasn't started yet, mark as "Shift Not Started"
-                    status = 'Shift Not Started'
-                    return { employee: e, status, inTime: null }
-                  } else {
-                    // Old logic
-                    const pakistanHour = pakistanNow.getUTCHours()
-                    const completedYesterdayShift = yesterdayRow && 
-                      yesterdayRow.inTime !== null && 
-                      yesterdayRow.outTime !== null && 
-                      yesterdayRow.outTime !== yesterdayRow.inTime
-                    
-                    if (pakistanHour < 6 && completedYesterdayShift) {
+                  // Check if shift start time has passed
+                  // Helper function to parse schedule name and get shift start time
+                  // Handles "Day 12-8", "Night 8-5", "Security 7-7", etc.
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      
+                      // Check if it's explicitly a night shift
+                      const isNightShift = scheduleLower.includes('night')
+                      // Check if it's explicitly a day shift
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      // For night shifts, if start hour is < 12, it's PM (e.g., "Night 8-5" means 8 PM = 20:00)
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12 // Convert to 24-hour format (8 PM = 20:00)
+                      } 
+                      // For day shifts, if start hour is >= 12, it's PM, otherwise AM
+                      else if (isDayShift && startHour < 12) {
+                        // Day shift with hour < 12 is AM (e.g., "Day 9-5" means 9 AM)
+                        // But "Day 12-8" means 12 PM (noon)
+                        if (startHour === 12) {
+                          startHour = 12 // 12 PM (noon)
+                        }
+                        // Otherwise keep as is (AM)
+                      }
+                      // For schedules without "Night" or "Day" keyword (e.g., "Security 7-7")
+                      // Use heuristic: if start hour < end hour and both are reasonable, it's likely a day shift
+                      // If start hour > end hour or start hour is 7+ in evening context, it's likely a night shift
+                      else if (!isNightShift && !isDayShift) {
+                        // Heuristic: If start hour is 7 or higher and end hour is much lower (e.g., 7-7, 8-5, 10-7),
+                        // it's likely a night shift (7 PM to 7 AM, 8 PM to 5 AM, etc.)
+                        // Also, if start hour >= 12, it's already PM
+                        if (startHour >= 12) {
+                          // Already PM (e.g., "Security 19-7" would be 7 PM to 7 AM)
+                          // Keep as is
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          // Start hour is 7+ and end hour is less or equal (e.g., "Security 7-7", "Night 8-5")
+                          // For "7-7", if both are the same and >= 7, it's likely a night shift (7 PM to 7 AM)
+                          // This is likely a night shift starting in PM
+                          startHour += 12 // Convert to 24-hour format (7 PM = 19:00, 8 PM = 20:00)
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Start hour is 7+ and end hour is 12+ (e.g., "Security 7-19" would be 7 AM to 7 PM)
+                          // This is likely a day shift, keep as is (AM)
+                        }
+                        // Otherwise, assume it's a day shift (AM)
+                      }
+                      return startHour
+                    }
+                    return null
+                  }
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const pakistanHour = pakistanNow.getUTCHours()
+                  const pakistanMinute = pakistanNow.getUTCMinutes()
+                  const currentTimeMinutes = pakistanHour * 60 + pakistanMinute
+                  
+                  // If we can determine shift start time and current time is before shift start, mark as "Shift Not Started"
+                  // Otherwise, mark as "Absent" (shift has started but they haven't punched in)
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (currentTimeMinutes < shiftStartMinutes) {
+                      // Shift hasn't started yet
                       status = 'Shift Not Started'
                       return { employee: e, status, inTime: null }
                     }
-                    
-                    const outTime = yesterdayRow?.outTime ? new Date(yesterdayRow.outTime) : null
-                    if (completedYesterdayShift && outTime) {
-                      const pakistanOffsetMs = 5 * 60 * 60 * 1000
-                      const pakistanOutTime = new Date(outTime.getTime() + pakistanOffsetMs)
-                      const outTimeDateStr = pakistanOutTime.toISOString().slice(0, 10)
-                      if (outTimeDateStr === pakistanDateStr) {
+                    // Shift has started - they should be marked as "Absent"
+                    r = todayRow
+                  } else {
+                    // Can't determine shift start time - use working day logic or old logic
+                    if (workingDayEnabled) {
+                      // With working day enabled, if shift hasn't started yet, mark as "Shift Not Started"
+                      status = 'Shift Not Started'
+                      return { employee: e, status, inTime: null }
+                    } else {
+                      // Old logic
+                      const completedYesterdayShift = yesterdayRow && 
+                        yesterdayRow.inTime !== null && 
+                        yesterdayRow.outTime !== null && 
+                        yesterdayRow.outTime !== yesterdayRow.inTime
+                      
+                      if (pakistanHour < 6 && completedYesterdayShift) {
                         status = 'Shift Not Started'
                         return { employee: e, status, inTime: null }
                       }
+                      
+                      const outTime = yesterdayRow?.outTime ? new Date(yesterdayRow.outTime) : null
+                      if (completedYesterdayShift && outTime) {
+                        const pakistanOffsetMs = 5 * 60 * 60 * 1000
+                        const pakistanOutTime = new Date(outTime.getTime() + pakistanOffsetMs)
+                        const outTimeDateStr = pakistanOutTime.toISOString().slice(0, 10)
+                        if (outTimeDateStr === pakistanDateStr) {
+                          status = 'Shift Not Started'
+                          return { employee: e, status, inTime: null }
+                        }
+                      }
+                      r = todayRow
                     }
-                    r = todayRow
                   }
                 } else {
                   r = todayRow
                 }
               } else if (yesterdayRow && yesterdayRow.inTime !== null) {
-                const isStillWorking = yesterdayRow.outTime === null || yesterdayRow.outTime === yesterdayRow.inTime
-                if (isStillWorking) {
-                  r = yesterdayRow
-                } else {
-                  const outTime = new Date(yesterdayRow.outTime)
-                  const pakistanOffsetMs = 5 * 60 * 60 * 1000
-                  const pakistanOutTime = new Date(outTime.getTime() + pakistanOffsetMs)
-                  const outTimeDateStr = pakistanOutTime.toISOString().slice(0, 10)
-                  if (outTimeDateStr === pakistanDateStr) {
-                    status = 'Shift Not Started'
-                    return { employee: e, status, inTime: null }
+                // Check if yesterdayRow is actually from yesterday or if it's a mis-matched early punch from today
+                const yesterdayInTime = new Date(yesterdayRow.inTime)
+                const pakistanOffsetMs = 5 * 60 * 60 * 1000
+                const pakistanYesterdayInTime = new Date(yesterdayInTime.getTime() + pakistanOffsetMs)
+                const yesterdayInTimeDateStr = pakistanYesterdayInTime.toISOString().slice(0, 10)
+                
+                // If yesterdayRow's inTime is actually from today (early morning punch matched to yesterday's shift),
+                // don't use it - treat as if there's no yesterdayRow
+                if (yesterdayInTimeDateStr === pakistanDateStr) {
+                  // This is actually today's punch that got matched to yesterday's shift
+                  // Don't use yesterdayRow, check if shift has started instead
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      const isNightShift = scheduleLower.includes('night')
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12
+                      } else if (isDayShift && startHour < 12) {
+                        if (startHour === 12) startHour = 12
+                      } else if (!isNightShift && !isDayShift) {
+                        if (startHour >= 12) {
+                          // Already PM
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          startHour += 12
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Day shift
+                        }
+                      }
+                      return startHour
+                    }
+                    return null
                   }
-                  return null
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const pakistanHour = pakistanNow.getUTCHours()
+                  const pakistanMinute = pakistanNow.getUTCMinutes()
+                  const currentTimeMinutes = pakistanHour * 60 + pakistanMinute
+                  
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (currentTimeMinutes < shiftStartMinutes) {
+                      status = 'Shift Not Started'
+                    } else {
+                      // Shift has started - they should have punched in by now
+                      // But we have a punch that got matched to yesterday - use it as today's punch
+                      r = yesterdayRow
+                      // Override the date to today
+                      r = { ...yesterdayRow, date: pakistanDateStr }
+                    }
+                  } else {
+                    // Can't determine shift start - use yesterdayRow as today's punch
+                    r = { ...yesterdayRow, date: pakistanDateStr }
+                  }
+                } else {
+                  // YesterdayRow is actually from yesterday
+                  const isStillWorking = yesterdayRow.outTime === null || yesterdayRow.outTime === yesterdayRow.inTime
+                  if (isStillWorking) {
+                    r = yesterdayRow
+                  } else {
+                    // Yesterday's shift is completed
+                    const outTime = new Date(yesterdayRow.outTime)
+                    const pakistanOutTime = new Date(outTime.getTime() + pakistanOffsetMs)
+                    const outTimeDateStr = pakistanOutTime.toISOString().slice(0, 10)
+                    if (outTimeDateStr === pakistanDateStr) {
+                      // They logged out today - shift just ended, check if new shift has started
+                      const getShiftStartHour = (scheduleName) => {
+                        if (!scheduleName || scheduleName === 'Not Assigned') return null
+                        const match = scheduleName.match(/(\d+)-(\d+)/)
+                        if (match) {
+                          let startHour = parseInt(match[1], 10)
+                          const endHour = parseInt(match[2], 10)
+                          const scheduleLower = scheduleName.toLowerCase()
+                          const isNightShift = scheduleLower.includes('night')
+                          const isDayShift = scheduleLower.includes('day')
+                          
+                          if (isNightShift && startHour < 12) {
+                            startHour += 12
+                          } else if (isDayShift && startHour < 12) {
+                            if (startHour === 12) startHour = 12
+                          } else if (!isNightShift && !isDayShift) {
+                            if (startHour >= 12) {
+                              // Already PM
+                            } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                              startHour += 12
+                            } else if (startHour >= 7 && endHour >= 12) {
+                              // Day shift
+                            }
+                          }
+                          return startHour
+                        }
+                        return null
+                      }
+                      
+                      const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                      const pakistanHour = pakistanNow.getUTCHours()
+                      const pakistanMinute = pakistanNow.getUTCMinutes()
+                      const currentTimeMinutes = pakistanHour * 60 + pakistanMinute
+                      
+                      if (shiftStartHour !== null) {
+                        const shiftStartMinutes = shiftStartHour * 60
+                        if (currentTimeMinutes < shiftStartMinutes) {
+                          status = 'Shift Not Started'
+                          return { employee: e, status, inTime: null }
+                        } else {
+                          // Shift has started - check if they've punched in
+                          status = 'Absent'
+                          return { employee: e, status, inTime: null }
+                        }
+                      } else {
+                        status = 'Shift Not Started'
+                        return { employee: e, status, inTime: null }
+                      }
+                    }
+                    // Yesterday's shift ended yesterday - no data for today
+                    return null
+                  }
                 }
               } else {
                 // No shift data - check if they have a schedule assigned
                 if (e.primary_schedule && e.primary_schedule !== 'Not Assigned') {
-                  status = 'Shift Not Started'
+                  // Check if shift start time has passed
+                  const getShiftStartHour = (scheduleName) => {
+                    if (!scheduleName || scheduleName === 'Not Assigned') return null
+                    const match = scheduleName.match(/(\d+)-(\d+)/)
+                    if (match) {
+                      let startHour = parseInt(match[1], 10)
+                      const endHour = parseInt(match[2], 10)
+                      const scheduleLower = scheduleName.toLowerCase()
+                      
+                      // Check if it's explicitly a night shift
+                      const isNightShift = scheduleLower.includes('night')
+                      // Check if it's explicitly a day shift
+                      const isDayShift = scheduleLower.includes('day')
+                      
+                      // For night shifts, if start hour is < 12, it's PM (e.g., "Night 8-5" means 8 PM = 20:00)
+                      if (isNightShift && startHour < 12) {
+                        startHour += 12 // Convert to 24-hour format (8 PM = 20:00)
+                      } 
+                      // For day shifts, if start hour is >= 12, it's PM, otherwise AM
+                      else if (isDayShift && startHour < 12) {
+                        // Day shift with hour < 12 is AM (e.g., "Day 9-5" means 9 AM)
+                        // But "Day 12-8" means 12 PM (noon)
+                        if (startHour === 12) {
+                          startHour = 12 // 12 PM (noon)
+                        }
+                        // Otherwise keep as is (AM)
+                      }
+                      // For schedules without "Night" or "Day" keyword (e.g., "Security 7-7")
+                      // Use heuristic: if start hour < end hour and both are reasonable, it's likely a day shift
+                      // If start hour > end hour or start hour is 7+ in evening context, it's likely a night shift
+                      else if (!isNightShift && !isDayShift) {
+                        // Heuristic: If start hour is 7 or higher and end hour is much lower (e.g., 7-7, 8-5, 10-7),
+                        // it's likely a night shift (7 PM to 7 AM, 8 PM to 5 AM, etc.)
+                        // Also, if start hour >= 12, it's already PM
+                        if (startHour >= 12) {
+                          // Already PM (e.g., "Security 19-7" would be 7 PM to 7 AM)
+                          // Keep as is
+                        } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                          // Start hour is 7+ and end hour is less or equal (e.g., "Security 7-7", "Night 8-5")
+                          // For "7-7", if both are the same and >= 7, it's likely a night shift (7 PM to 7 AM)
+                          // This is likely a night shift starting in PM
+                          startHour += 12 // Convert to 24-hour format (7 PM = 19:00, 8 PM = 20:00)
+                        } else if (startHour >= 7 && endHour >= 12) {
+                          // Start hour is 7+ and end hour is 12+ (e.g., "Security 7-19" would be 7 AM to 7 PM)
+                          // This is likely a day shift, keep as is (AM)
+                        }
+                        // Otherwise, assume it's a day shift (AM)
+                      }
+                      return startHour
+                    }
+                    return null
+                  }
+                  
+                  const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                  const pakistanHour = pakistanNow.getUTCHours()
+                  const pakistanMinute = pakistanNow.getUTCMinutes()
+                  const currentTimeMinutes = pakistanHour * 60 + pakistanMinute
+                  
+                  if (shiftStartHour !== null) {
+                    const shiftStartMinutes = shiftStartHour * 60
+                    if (currentTimeMinutes < shiftStartMinutes) {
+                      status = 'Shift Not Started'
+                    } else {
+                      // Shift has started but no data - likely absent
+                      status = 'Absent'
+                    }
+                  } else {
+                    // Can't determine shift start - default to "Shift Not Started"
+                    status = 'Shift Not Started'
+                  }
                 } else {
                   status = 'No Schedule'
                 }
                 return { employee: e, status, inTime: null }
+              }
+              
+              // If we have an unmatched recent log from today, use it instead of r
+              // OR if r exists but latestLog is more recent, use latestLog
+              // IMPORTANT: Only use latestLog if it actually belongs to this employee
+              if (latestLog && latestLog.isUnmatched) {
+                // Validate that the log belongs to this employee
+                const logEmployeeId = latestLog.employee_id
+                const logZkUserId = latestLog.zk_user_id
+                const belongsToEmployee = (logEmployeeId === e.id) || (logZkUserId && e.zk_user_id && logZkUserId === e.zk_user_id)
+                
+                if (!belongsToEmployee) {
+                  // Log doesn't belong to this employee - don't use it, fall through to use r
+                  latestLog = null
+                } else {
+                  // Use the latest log as today's punch
+                  inTime = latestLog.log_time
+                // Determine status based on shift start time
+                const getShiftStartHour = (scheduleName) => {
+                  if (!scheduleName || scheduleName === 'Not Assigned') return null
+                  const match = scheduleName.match(/(\d+)-(\d+)/)
+                  if (match) {
+                    let startHour = parseInt(match[1], 10)
+                    const endHour = parseInt(match[2], 10)
+                    const scheduleLower = scheduleName.toLowerCase()
+                    const isNightShift = scheduleLower.includes('night')
+                    const isDayShift = scheduleLower.includes('day')
+                    
+                    if (isNightShift && startHour < 12) {
+                      startHour += 12
+                    } else if (isDayShift && startHour < 12) {
+                      if (startHour === 12) startHour = 12
+                    } else if (!isNightShift && !isDayShift) {
+                      if (startHour >= 12) {
+                        // Already PM
+                      } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                        startHour += 12
+                      } else if (startHour >= 7 && endHour >= 12) {
+                        // Day shift
+                      }
+                    }
+                    return startHour
+                  }
+                  return null
+                }
+                
+                const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                if (shiftStartHour !== null) {
+                  const logTime = new Date(latestLog.log_time)
+                  const pakistanLogTime = new Date(logTime.getTime() + 5 * 60 * 60 * 1000)
+                  const logHour = pakistanLogTime.getUTCHours()
+                  const logMinute = pakistanLogTime.getUTCMinutes()
+                  const logTimeMinutes = logHour * 60 + logMinute
+                  const shiftStartMinutes = shiftStartHour * 60
+                  const graceMinutes = 30 // Use company default buffer time
+                  const onTimeThreshold = shiftStartMinutes + graceMinutes
+                  
+                  if (logTimeMinutes <= onTimeThreshold) {
+                    status = 'On-Time'
+                  } else {
+                    status = 'Late-In'
+                  }
+                } else {
+                  status = 'Present'
+                }
+                
+                return { employee: e, status, inTime }
+                }
+              }
+              
+              // Also check if r exists but latestLog is more recent than r.inTime
+              // IMPORTANT: Only use latestLog if it actually belongs to this employee
+              if (r && r.inTime && latestLog) {
+                // Validate that the log belongs to this employee
+                const logEmployeeId = latestLog.employee_id
+                const logZkUserId = latestLog.zk_user_id
+                const belongsToEmployee = (logEmployeeId === e.id) || (logZkUserId && e.zk_user_id && logZkUserId === e.zk_user_id)
+                
+                if (!belongsToEmployee) {
+                  // Log doesn't belong to this employee - don't use it
+                  latestLog = null
+                } else {
+                  const rInTime = new Date(r.inTime)
+                  const logTime = new Date(latestLog.log_time)
+                  // If latestLog is more recent (within last 2 hours), use it instead
+                  const timeDiff = logTime.getTime() - rInTime.getTime()
+                  const twoHours = 2 * 60 * 60 * 1000
+                  if (timeDiff > 0 && timeDiff < twoHours) {
+                    // Latest log is more recent - use it
+                    inTime = latestLog.log_time
+                    // Recalculate status based on latest log
+                    const getShiftStartHour = (scheduleName) => {
+                      if (!scheduleName || scheduleName === 'Not Assigned') return null
+                      const match = scheduleName.match(/(\d+)-(\d+)/)
+                      if (match) {
+                        let startHour = parseInt(match[1], 10)
+                        const endHour = parseInt(match[2], 10)
+                        const scheduleLower = scheduleName.toLowerCase()
+                        const isNightShift = scheduleLower.includes('night')
+                        const isDayShift = scheduleLower.includes('day')
+                        
+                        if (isNightShift && startHour < 12) {
+                          startHour += 12
+                        } else if (isDayShift && startHour < 12) {
+                          if (startHour === 12) startHour = 12
+                        } else if (!isNightShift && !isDayShift) {
+                          if (startHour >= 12) {
+                            // Already PM
+                          } else if (startHour >= 7 && (endHour < startHour || endHour === startHour)) {
+                            startHour += 12
+                          } else if (startHour >= 7 && endHour >= 12) {
+                            // Day shift
+                          }
+                        }
+                        return startHour
+                      }
+                      return null
+                    }
+                    
+                    const shiftStartHour = getShiftStartHour(e.primary_schedule)
+                    if (shiftStartHour !== null) {
+                      const pakistanLogTime = new Date(logTime.getTime() + 5 * 60 * 60 * 1000)
+                      const logHour = pakistanLogTime.getUTCHours()
+                      const logMinute = pakistanLogTime.getUTCMinutes()
+                      const logTimeMinutes = logHour * 60 + logMinute
+                      const shiftStartMinutes = shiftStartHour * 60
+                      const graceMinutes = 30
+                      const onTimeThreshold = shiftStartMinutes + graceMinutes
+                      
+                      if (logTimeMinutes <= onTimeThreshold) {
+                        status = 'On-Time'
+                      } else {
+                        status = 'Late-In'
+                      }
+                    } else {
+                      status = r.status || 'Present'
+                    }
+                    
+                    return { employee: e, status, inTime }
+                  }
+                  // If timeDiff condition not met, fall through to use r
+                }
               }
               
               if (!r) return null
@@ -725,7 +1387,7 @@ export default function Home() {
             parsed.departmentEmployees = deptArray
             localStorage.setItem('dashboard_metrics_cache', JSON.stringify(parsed))
           }
-        } catch (e) {
+    } catch (e) {
           console.warn('Failed to update cache with department employees:', e)
         }
       }
@@ -880,35 +1542,129 @@ export default function Home() {
         </Group>
       </Group>
 
-      <Paper withBorder shadow="sm" p="md" mb="md">
+      {/* Metrics Cards */}
+      <Grid gutter="md" mb="md">
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card 
+            withBorder 
+            p="md" 
+            radius="md"
+            style={{ 
+              height: '100%',
+              cursor: 'default',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Stack gap="xs">
+              <Text size="xs" c="dimmed" fw={500}>Employees Present</Text>
+              <Title order={2} fw={700}>
+                {metricsLoading ? '…' : metrics.present}
+              </Title>
+              <Text size="xs" c="dimmed">Today</Text>
+            </Stack>
+          </Card>
+        </Grid.Col>
+        
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card 
+            withBorder 
+            p="md" 
+            radius="md"
+            style={{ 
+              height: '100%',
+              cursor: metrics.onTime > 0 ? 'pointer' : 'default',
+              transition: 'all 0.2s ease'
+            }}
+            onClick={() => metrics.onTime > 0 && setOnTimeModalOpen(true)}
+            onMouseEnter={(e) => {
+              if (metrics.onTime > 0) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = 'var(--mantine-shadow-md)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <Stack gap="xs">
+              <Text size="xs" c="dimmed" fw={500}>Employees On-Time</Text>
+              <Title order={2} fw={700} c="teal">
+                {metricsLoading ? '…' : metrics.onTime}
+              </Title>
+              <Text size="xs" c="dimmed">Today</Text>
+            </Stack>
+          </Card>
+        </Grid.Col>
+        
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card 
+            withBorder 
+            p="md" 
+            radius="md"
+            style={{ 
+              height: '100%',
+              cursor: metrics.late > 0 ? 'pointer' : 'default',
+              transition: 'all 0.2s ease'
+            }}
+            onClick={() => metrics.late > 0 && setLateModalOpen(true)}
+            onMouseEnter={(e) => {
+              if (metrics.late > 0) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = 'var(--mantine-shadow-md)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <Stack gap="xs">
+              <Text size="xs" c="dimmed" fw={500}>Employees Late-In</Text>
+              <Title order={2} fw={700} c="orange">
+                {metricsLoading ? '…' : metrics.late}
+              </Title>
+              <Text size="xs" c="dimmed">Today</Text>
+            </Stack>
+          </Card>
+        </Grid.Col>
+        
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card 
+            withBorder 
+            p="md" 
+            radius="md"
+            style={{ 
+              height: '100%',
+              cursor: metrics.absent > 0 ? 'pointer' : 'default',
+              transition: 'all 0.2s ease'
+            }}
+            onClick={() => metrics.absent > 0 && setAbsentModalOpen(true)}
+            onMouseEnter={(e) => {
+              if (metrics.absent > 0) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = 'var(--mantine-shadow-md)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <Stack gap="xs">
+              <Text size="xs" c="dimmed" fw={500}>Employees Absent</Text>
+              <Title order={2} fw={700} c="red">
+                {metricsLoading ? '…' : metrics.absent}
+              </Title>
+              <Text size="xs" c="dimmed">Today</Text>
+            </Stack>
+          </Card>
+        </Grid.Col>
+      </Grid>
+      
+      {/* Refresh Controls */}
+      <Paper withBorder p="sm" mb="md" radius="md">
         <Group justify="space-between" align="center">
-          <Group gap="lg">
-            <div>
-              <Text size="sm" c="dimmed">Employees Present (today)</Text>
-              <Title order={3}>{metricsLoading ? '…' : metrics.present}</Title>
-            </div>
-            <div 
-              style={{ cursor: metrics.onTime > 0 ? 'pointer' : 'default' }}
-              onClick={() => metrics.onTime > 0 && setOnTimeModalOpen(true)}
-            >
-              <Text size="sm" c="dimmed">Employees On-Time (today)</Text>
-              <Title order={3} c="green">{metricsLoading ? '…' : metrics.onTime}</Title>
-            </div>
-            <div 
-              style={{ cursor: metrics.late > 0 ? 'pointer' : 'default' }}
-              onClick={() => metrics.late > 0 && setLateModalOpen(true)}
-            >
-              <Text size="sm" c="dimmed">Employees Late-In (today)</Text>
-              <Title order={3} c="orange">{metricsLoading ? '…' : metrics.late}</Title>
-            </div>
-            <div 
-              style={{ cursor: metrics.absent > 0 ? 'pointer' : 'default' }}
-              onClick={() => metrics.absent > 0 && setAbsentModalOpen(true)}
-            >
-              <Text size="sm" c="dimmed">Employees Absent (today)</Text>
-              <Title order={3} c="red">{metricsLoading ? '…' : metrics.absent}</Title>
-            </div>
-          </Group>
           <Group gap="xs">
             {metricsRefreshing && (
               <Text size="xs" c="dimmed">Refreshing...</Text>
@@ -918,10 +1674,10 @@ export default function Home() {
                 Updated: {formatUTC12HourTime(lastMetricsUpdate.toISOString())}
               </Text>
             )}
-            <Button variant="light" onClick={() => fetchMetrics(false)} loading={metricsLoading || metricsRefreshing}>
-              Refresh Overview
-            </Button>
           </Group>
+          <Button variant="light" size="sm" onClick={() => fetchMetrics(false)} loading={metricsLoading || metricsRefreshing}>
+            Refresh Overview
+          </Button>
         </Group>
       </Paper>
 
@@ -1064,18 +1820,24 @@ export default function Home() {
       </Modal>
 
       {/* Department-Wise Employee Status */}
-      <Paper withBorder shadow="sm" p="md" mb="md">
-        <Title order={3} mb="md">Employee Status by Department</Title>
-        {metricsLoading ? (
-          <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
-        ) : departmentEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="md">No employee data available</Text>
-        ) : (
-          <Stack gap="lg">
-            {departmentEmployees.map(({ department, employees }) => (
-              <div key={department}>
-                <Title order={4} mb="sm" c="blue">{department}</Title>
-                <Table striped highlightOnHover withTableBorder>
+      <Paper withBorder p="md" mb="md" radius="md">
+        <Stack gap="md">
+          <div>
+            <Title order={3} mb={4}>Employee Status by Department</Title>
+            <Text size="sm" c="dimmed">Real-time attendance overview</Text>
+          </div>
+          
+          {metricsLoading ? (
+            <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
+          ) : departmentEmployees.length === 0 ? (
+            <Text c="dimmed" ta="center" py="md">No employee data available</Text>
+          ) : (
+            <Stack gap="md">
+              {departmentEmployees.map(({ department, employees }) => (
+                <Card key={department} withBorder p="md" radius="md">
+                  <Stack gap="sm">
+                    <Text fw={600} size="sm" c="blue" mb="xs">{department}</Text>
+                    <Table striped highlightOnHover withTableBorder>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Name</Table.Th>
@@ -1137,12 +1899,14 @@ export default function Home() {
                         </Table.Tr>
                       )
                     })}
-                  </Table.Tbody>
-                </Table>
-              </div>
+                    </Table.Tbody>
+                  </Table>
+                </Stack>
+              </Card>
             ))}
           </Stack>
         )}
+        </Stack>
       </Paper>
 
       <Paper withBorder shadow="sm" p="md" pos="relative">
