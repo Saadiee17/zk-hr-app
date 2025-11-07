@@ -181,7 +181,33 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         const utcStartDate = new Date(d)
         utcStartDate.setUTCDate(utcStartDate.getUTCDate() + utcStartDayOffset)
         const utcDateStr = utcStartDate.toISOString().slice(0, 10)
-        const shiftKey = `${utcDateStr}-${tzString}` // Unique key per date-schedule combination
+        
+        // CRITICAL FIX: When working day is enabled, use working day date for grouping
+        // This ensures shifts are assigned to the correct working day, not calendar date
+        // Example: A shift starting at Nov 7 5 PM belongs to Nov 7 working day (10 AM - 9:59 AM next day)
+        // even if it ends after midnight (Nov 8 2 AM)
+        // 
+        // BUG FIX: We must use the ACTUAL shift start time, not midnight!
+        // Create a timestamp for the actual shift start (not just the date at 00:00)
+        const actualShiftStartUTC = new Date(utcStartDate)
+        actualShiftStartUTC.setUTCHours(parseInt(utcStartHHMM.slice(0, 2)), parseInt(utcStartHHMM.slice(2, 4)), 0, 0)
+        
+        const groupingDate = workingDayEnabled 
+          ? getWorkingDayForTimestamp(actualShiftStartUTC, workingDayEnabled, workingDayStartTime)
+          : utcDateStr
+        
+        // DEBUG: Log the grouping calculation
+        if (workingDayEnabled) {
+          console.log(`[daily-work-time] Working day calculation for shift:`, {
+            utcDate: utcDateStr,
+            shiftStartUTC: actualShiftStartUTC.toISOString(),
+            shiftStartPakistan: new Date(actualShiftStartUTC.getTime() + 5*60*60*1000).toISOString(),
+            groupingDate: groupingDate,
+            pakistanHHMM: shift.startHHMM
+          })
+        }
+        
+        const shiftKey = `${groupingDate}-${tzString}` // Unique key per date-schedule combination
         
         // Store ALL shifts for this date (one per schedule)
         // Use shiftKey to allow multiple shifts per date from different schedules
@@ -191,10 +217,10 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
             utcDate: utcStartDate, // Use the actual UTC start date
         is_half_day: false, // Regular shifts are not half days
             tz_string: tzString, // Track which schedule this shift belongs to
-            dateKey: utcDateStr, // For grouping by date later
+            dateKey: groupingDate, // FIXED: Use working day date for grouping
             utcEndDayOffset: utcEndDayOffset, // Track end day offset for proper window calculation
       })
-          console.log(`[daily-work-time] Shift ${utcDateStr} (${tzString}): Pakistan ${shift.startHHMM}-${shift.endHHMM} → UTC ${utcStartHHMM}-${utcEndHHMM} (start date: ${utcDateStr}, end offset: ${utcEndDayOffset} days)`)
+          console.log(`[daily-work-time] Shift ${utcDateStr} (${tzString}): Pakistan ${shift.startHHMM}-${shift.endHHMM} → UTC ${utcStartHHMM}-${utcEndHHMM} (UTC date: ${utcDateStr}, Working Day: ${groupingDate}, end offset: ${utcEndDayOffset} days)`)
         }
       }
     }
@@ -426,7 +452,11 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
           }
         }
         
-        if (score > bestScore) {
+        // Use score first, then prefer shift with closest start time for ties
+        const isBetterMatch = score > bestScore || 
+          (score === bestScore && distanceToStart < Math.abs(log.t.getTime() - (bestMatch ? isoAt(bestMatch.utcDate, parseHHMM(bestMatch.shift.startHHMM)).getTime() : Infinity)))
+        
+        if (isBetterMatch) {
           bestScore = score
           bestMatch = shiftInfo
           assignedShiftUTCDate = shiftInfo.dateKey // Use dateKey for grouping
@@ -545,12 +575,14 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     }
   }
   
-  // Process unmatched punches AFTER shifts - group by Pakistan calendar date
+  // Process unmatched punches AFTER shifts - group by working day or calendar date
   // This ensures unmatched punches don't create duplicates with shift entries
   const unmatchedByDate = new Map() // date -> array of punches
   for (const log of unmatchedPunches) {
-    // Use Pakistan calendar date (simple and predictable)
-    const dateStr = getDateInPakistanTz(log.t)
+    // Use working day date if enabled, otherwise use Pakistan calendar date
+    const dateStr = workingDayEnabled
+      ? getWorkingDayForTimestamp(log.t, workingDayEnabled, workingDayStartTime)
+      : getDateInPakistanTz(log.t)
     if (!unmatchedByDate.has(dateStr)) {
       unmatchedByDate.set(dateStr, [])
     }
