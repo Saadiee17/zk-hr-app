@@ -17,7 +17,8 @@ import {
   Grid,
   Card,
   Collapse,
-  ActionIcon
+  ActionIcon,
+  Box
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconRefresh, IconCheck, IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
@@ -502,138 +503,206 @@ function Dashboard() {
   })
 
   return (
-    <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
+    <Box 
+      style={{ 
+        minHeight: '100vh',
+        paddingLeft: 'var(--mantine-spacing-md)',
+        paddingRight: 'calc(250px + var(--mantine-spacing-md))', // Navbar width + left padding for visual centering
+        paddingTop: 'var(--mantine-spacing-md)',
+        paddingBottom: 'var(--mantine-spacing-md)',
+        maxWidth: '1400px',
+        marginLeft: 'auto',
+        marginRight: 'auto'
+      }}
+    >
       {/* Header */}
-      <Group justify="space-between" mb="xl">
-        <Title order={1}>HR Attendance Dashboard</Title>
-        <Group gap="md">
-          {lastSyncTime && (
-            <Text size="sm" c="dimmed">
-              Last sync: {formatUTC12HourTime(lastSyncTime.toISOString())}
-            </Text>
-          )}
+      <Stack gap="md">
+        <Group justify="space-between" align="center">
+          <div>
+            <Title order={1} mb={4}>HR Attendance Dashboard</Title>
+            {lastSyncTime && (
+              <Text size="sm" c="dimmed">
+                Last sync: {formatUTC12HourTime(lastSyncTime.toISOString())}
+              </Text>
+            )}
+          </div>
         <Button
             onClick={() => handleSync(false)}
           loading={syncing}
             leftSection={<IconRefresh size={16} />}
+            size="md"
         >
           Sync Data Now
         </Button>
       </Group>
-      </Group>
 
-      {/* Metrics Grid */}
-      <Grid mb="xl">
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <Card 
-            shadow="sm" 
-            padding="lg" 
-            radius="md" 
-            withBorder 
-            style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            onClick={() => setPresentModalOpen(true)}
-          >
-            <Stack gap="xs">
-              <Text size="sm" c="dimmed" fw={500}>Employees Present</Text>
-              <Text size="xl" fw={700} c="blue">{metrics.present}</Text>
-            </Stack>
-          </Card>
-        </Grid.Col>
+        {/* Metrics Grid - More Compact */}
+        <Grid gutter="md">
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <Card 
+              shadow="sm" 
+              padding="md" 
+              radius="lg" 
+              withBorder 
+              style={{ 
+                cursor: 'pointer', 
+                transition: 'all 0.2s',
+                borderLeft: '4px solid var(--mantine-color-blue-6)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+              onClick={() => setPresentModalOpen(true)}
+            >
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Present</Text>
+                <Text size={32} fw={700} c="blue" lh={1}>{metrics.present}</Text>
+                <Text size="xs" c="dimmed">Working today</Text>
+              </Stack>
+            </Card>
+          </Grid.Col>
 
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <Card 
-            shadow="sm" 
-            padding="lg" 
-            radius="md" 
-            withBorder 
-            style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-            onClick={() => setOnTimeModalOpen(true)}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <Stack gap="xs">
-              <Text size="sm" c="dimmed" fw={500}>Employees On-Time</Text>
-              <Text size="xl" fw={700} c="green">{metrics.onTime}</Text>
-            </Stack>
-          </Card>
-        </Grid.Col>
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <Card 
+              shadow="sm" 
+              padding="md" 
+              radius="lg" 
+              withBorder 
+              style={{ 
+                cursor: 'pointer', 
+                transition: 'all 0.2s',
+                borderLeft: '4px solid var(--mantine-color-green-6)'
+              }}
+              onClick={() => setOnTimeModalOpen(true)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">On-Time</Text>
+                <Text size={32} fw={700} c="green" lh={1}>{metrics.onTime}</Text>
+                <Text size="xs" c="dimmed">Punctual</Text>
+              </Stack>
+            </Card>
+          </Grid.Col>
 
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <Card 
-            shadow="sm" 
-            padding="lg" 
-            radius="md" 
-            withBorder 
-            style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-            onClick={() => setLateModalOpen(true)}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <Stack gap="xs">
-              <Text size="sm" c="dimmed" fw={500}>Employees Late-In</Text>
-              <Text size="xl" fw={700} c="orange">{metrics.late}</Text>
-            </Stack>
-          </Card>
-        </Grid.Col>
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <Card 
+              shadow="sm" 
+              padding="md" 
+              radius="lg" 
+              withBorder 
+              style={{ 
+                cursor: 'pointer', 
+                transition: 'all 0.2s',
+                borderLeft: '4px solid var(--mantine-color-orange-6)'
+              }}
+              onClick={() => setLateModalOpen(true)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Late-In</Text>
+                <Text size={32} fw={700} c="orange" lh={1}>{metrics.late}</Text>
+                <Text size="xs" c="dimmed">Delayed arrival</Text>
+              </Stack>
+            </Card>
+          </Grid.Col>
 
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <Card 
-            shadow="sm" 
-            padding="lg" 
-            radius="md" 
-            withBorder 
-            style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-            onClick={() => setAbsentModalOpen(true)}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <Stack gap="xs">
-              <Text size="sm" c="dimmed" fw={500}>Employees Absent</Text>
-              <Text size="xl" fw={700} c="red">{metrics.absent}</Text>
-            </Stack>
-          </Card>
-        </Grid.Col>
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <Card 
+              shadow="sm" 
+              padding="md" 
+              radius="lg" 
+              withBorder 
+              style={{ 
+                cursor: 'pointer', 
+                transition: 'all 0.2s',
+                borderLeft: '4px solid var(--mantine-color-red-6)'
+              }}
+              onClick={() => setAbsentModalOpen(true)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Absent</Text>
+                <Text size={32} fw={700} c="red" lh={1}>{metrics.absent}</Text>
+                <Text size="xs" c="dimmed">Not present</Text>
+              </Stack>
+            </Card>
+          </Grid.Col>
 
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <Card 
-            shadow="sm" 
-            padding="lg" 
-            radius="md" 
-            withBorder 
-            style={{ transition: 'transform 0.2s' }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <Stack gap="xs">
-              <Text size="sm" c="dimmed" fw={500}>Total Employees</Text>
-              <Text size="xl" fw={700} c="gray">{totalEmployees}</Text>
-            </Stack>
-          </Card>
-        </Grid.Col>
-      </Grid>
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <Card 
+              shadow="sm" 
+              padding="md" 
+              radius="lg" 
+              withBorder 
+              style={{ 
+                transition: 'all 0.2s',
+                borderLeft: '4px solid var(--mantine-color-gray-6)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Total</Text>
+                <Text size={32} fw={700} c="gray" lh={1}>{totalEmployees}</Text>
+                <Text size="xs" c="dimmed">All employees</Text>
+              </Stack>
+            </Card>
+          </Grid.Col>
+        </Grid>
 
-      {/* Refresh Controls */}
-      <Paper withBorder p="md" mb="md" radius="md">
-        <Group justify="space-between">
-            <div>
-            <Text fw={500}>Dashboard Controls</Text>
-            <Text size="sm" c="dimmed">Auto-refresh enabled (every 2 minutes)</Text>
-            </div>
-          <Button 
-            onClick={() => fetchMetrics(false)}
-            loading={metricsLoading}
-            leftSection={<IconRefresh size={16} />}
-            variant="light"
-          >
-            Refresh Metrics
-          </Button>
+        {/* Refresh Controls - Compact */}
+        <Paper withBorder p="sm" radius="lg" style={{ background: 'var(--mantine-color-gray-0)' }}>
+        <Group justify="space-between" align="center">
+            <Group gap="xs">
+              <Text size="sm" fw={500} c="dimmed">Auto-refresh: Every 2 minutes</Text>
+              <Badge size="sm" variant="dot" color="green">Active</Badge>
+            </Group>
+            <Button
+              onClick={() => fetchMetrics(false)}
+              loading={metricsLoading}
+              leftSection={<IconRefresh size={14} />}
+              variant="light"
+              size="xs"
+            >
+              Refresh Now
+            </Button>
         </Group>
       </Paper>
 
-      {/* Department-Wise Employee Status */}
-      <Paper withBorder p="md" mb="md" radius="md">
+        {/* Department-Wise Employee Status - Modern */}
+        <Paper withBorder p="md" radius="lg">
         <Stack gap="md">
           <div>
             <Title order={3} mb={4}>Employee Status by Department</Title>
@@ -741,19 +810,31 @@ function Dashboard() {
       <Modal
         opened={lateModalOpen}
         onClose={() => setLateModalOpen(false)}
-        title="Employees Late-In Today"
-        size="lg"
+        title={
+          <Text fw={600} size="lg">Employees Late-In Today</Text>
+        }
+        size="xl"
+        styles={{
+          body: { padding: 'var(--mantine-spacing-lg)' },
+          content: { maxWidth: '1000px' }
+        }}
       >
         {lateEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="md">No late employees</Text>
+          <Text c="dimmed" ta="center" py="xl" size="lg">No late employees</Text>
         ) : (
-          <Table striped highlightOnHover>
+          <Table 
+            striped 
+            highlightOnHover
+            withTableBorder
+            withColumnBorders={false}
+          >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Department</Table.Th>
-                <Table.Th>Schedule</Table.Th>
-                <Table.Th>Check-In Time</Table.Th>
+                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -761,14 +842,27 @@ function Dashboard() {
                 <Table.Tr key={emp.id}>
                   <Table.Td>
                     <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link">
+                      <Text component="span" className="employee-name-link" fw={500}>
                         {emp.name}
                       </Text>
                     </Link>
                   </Table.Td>
-                  <Table.Td>{emp.department}</Table.Td>
-                  <Table.Td>{emp.schedule}</Table.Td>
-                  <Table.Td>{emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.department}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.schedule}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace">
+                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace" c="dimmed">
+                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                    </Text>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -779,18 +873,29 @@ function Dashboard() {
       <Modal
         opened={absentModalOpen}
         onClose={() => setAbsentModalOpen(false)}
-        title="Employees Absent Today"
-        size="lg"
+        title={
+          <Text fw={600} size="lg">Employees Absent Today</Text>
+        }
+        size="xl"
+        styles={{
+          body: { padding: 'var(--mantine-spacing-lg)' },
+          content: { maxWidth: '900px' }
+        }}
       >
         {absentEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="md">No absent employees</Text>
+          <Text c="dimmed" ta="center" py="xl" size="lg">No absent employees</Text>
         ) : (
-          <Table striped highlightOnHover>
+          <Table 
+            striped 
+            highlightOnHover
+            withTableBorder
+            withColumnBorders={false}
+          >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Department</Table.Th>
-                <Table.Th>Schedule</Table.Th>
+                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -798,13 +903,17 @@ function Dashboard() {
                 <Table.Tr key={emp.id}>
                   <Table.Td>
                     <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link">
+                      <Text component="span" className="employee-name-link" fw={500}>
                         {emp.name}
                       </Text>
                     </Link>
                   </Table.Td>
-                  <Table.Td>{emp.department}</Table.Td>
-                  <Table.Td>{emp.schedule}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.department}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.schedule}</Text>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -815,19 +924,31 @@ function Dashboard() {
       <Modal
         opened={onTimeModalOpen}
         onClose={() => setOnTimeModalOpen(false)}
-        title="Employees On-Time Today"
-        size="lg"
+        title={
+          <Text fw={600} size="lg">Employees On-Time Today</Text>
+        }
+        size="xl"
+        styles={{
+          body: { padding: 'var(--mantine-spacing-lg)' },
+          content: { maxWidth: '1000px' }
+        }}
       >
         {onTimeEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="md">No on-time employees</Text>
+          <Text c="dimmed" ta="center" py="xl" size="lg">No on-time employees</Text>
         ) : (
-          <Table striped highlightOnHover>
+          <Table 
+            striped 
+            highlightOnHover
+            withTableBorder
+            withColumnBorders={false}
+          >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Department</Table.Th>
-                <Table.Th>Schedule</Table.Th>
-                <Table.Th>Check-In Time</Table.Th>
+                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -835,14 +956,27 @@ function Dashboard() {
                 <Table.Tr key={emp.id}>
                   <Table.Td>
                     <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link">
+                      <Text component="span" className="employee-name-link" fw={500}>
                         {emp.name}
                       </Text>
                     </Link>
                   </Table.Td>
-                  <Table.Td>{emp.department}</Table.Td>
-                  <Table.Td>{emp.schedule}</Table.Td>
-                  <Table.Td>{emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.department}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.schedule}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace">
+                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace" c="dimmed">
+                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                    </Text>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -853,21 +987,33 @@ function Dashboard() {
       <Modal
         opened={presentModalOpen}
         onClose={() => setPresentModalOpen(false)}
-        title="Employees Present Today"
-        size="lg"
+        title={
+          <Text fw={600} size="lg">Employees Present Today</Text>
+        }
+        size="xl"
+        styles={{
+          body: { padding: 'var(--mantine-spacing-lg)' },
+          content: { maxWidth: '1200px' }
+        }}
       >
         {presentEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="md">No present employees</Text>
+          <Text c="dimmed" ta="center" py="xl" size="lg">No present employees</Text>
         ) : (
-          <Table striped highlightOnHover>
+          <Table 
+            striped 
+            highlightOnHover
+            withTableBorder
+            withColumnBorders={false}
+            style={{ tableLayout: 'auto' }}
+          >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Department</Table.Th>
-                <Table.Th>Schedule</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Check-In Time</Table.Th>
-                <Table.Th>Check-Out Time</Table.Th>
+                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                <Table.Th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>Status</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -875,13 +1021,17 @@ function Dashboard() {
                 <Table.Tr key={emp.id}>
                   <Table.Td>
                     <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link">
+                      <Text component="span" className="employee-name-link" fw={500}>
                         {emp.name}
                       </Text>
                     </Link>
                   </Table.Td>
-                  <Table.Td>{emp.department}</Table.Td>
-                  <Table.Td>{emp.schedule}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.department}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{emp.schedule}</Text>
+                  </Table.Td>
                   <Table.Td>
                     <Badge 
                       color={
@@ -889,12 +1039,28 @@ function Dashboard() {
                         emp.status === 'Late-In' ? 'orange' : 
                         'yellow'
                       }
+                      size="md"
+                      variant="light"
+                      style={{ whiteSpace: 'nowrap' }}
                     >
                       {emp.status}
                     </Badge>
                   </Table.Td>
-                  <Table.Td>{emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}</Table.Td>
-                  <Table.Td>{emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace">
+                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text 
+                      size="sm" 
+                      ff="monospace"
+                      c={emp.outTime ? undefined : 'dimmed'}
+                      fw={emp.outTime ? undefined : 500}
+                    >
+                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                    </Text>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -902,38 +1068,41 @@ function Dashboard() {
         )}
       </Modal>
 
-      {/* Attendance Logs */}
-      <Title order={2} mb="md">Recent Attendance Logs</Title>
-      <Paper withBorder radius="md" p="md">
-        <LoadingOverlay visible={loading} />
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>ZK User ID</Table.Th>
-              <Table.Th>Employee</Table.Th>
-              <Table.Th>Department</Table.Th>
-              <Table.Th>Log Time</Table.Th>
-              <Table.Th>Punch Status</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Synced At</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>{rows}</Table.Tbody>
-        </Table>
+        {/* Attendance Logs - Modern */}
+        <div>
+          <Title order={2} mb="sm">Recent Attendance Logs</Title>
+          <Paper withBorder radius="lg" p="md">
+            <LoadingOverlay visible={loading} />
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>ZK User ID</Table.Th>
+                  <Table.Th>Employee</Table.Th>
+                  <Table.Th>Department</Table.Th>
+                  <Table.Th>Log Time</Table.Th>
+                  <Table.Th>Punch Status</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Synced At</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>{rows}</Table.Tbody>
+            </Table>
 
-        {/* Pagination */}
-        <Group justify="center" mt="xl">
-          <Pagination 
-            total={totalPages} 
-            value={currentPage} 
-            onChange={(p) => {
-              setCurrentPage(p)
-              fetchLogs(p, logsPerPage)
-            }} 
-          />
-        </Group>
+            {/* Pagination */}
+            <Group justify="center" mt="xl">
+              <Pagination 
+                total={totalPages} 
+                value={currentPage} 
+                onChange={(p) => {
+                  setCurrentPage(p)
+                  fetchLogs(p, logsPerPage)
+                }} 
+              />
+            </Group>
       </Paper>
-    </Container>
+        </div>
+      </Stack>
+    </Box>
   )
 }
 

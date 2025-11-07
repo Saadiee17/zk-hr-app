@@ -13,7 +13,7 @@ export function AppShellWrapper({ children }) {
 
   return (
     <AppShell
-      padding="md"
+      padding={0}
       header={{ height: 56 }}
       navbar={{
         width: 250,
