@@ -26,7 +26,7 @@ export default function BridgeInstaller() {
         <div>
           <Title order={1} mb="md">ZK Bridge Installer</Title>
           <Text c="dimmed" size="lg">
-            Download and install the ZK Bridge service to sync attendance data from your ZKTeco devices.
+            Download and install the ZK Bridge service to sync attendance data from your ZKTeco devices. Supabase credentials are pre-configured - you only need to enter your device IP and port!
           </Text>
         </div>
 
@@ -88,16 +88,16 @@ export default function BridgeInstaller() {
           </Stack>
         </Paper>
 
-        <Paper withBorder shadow="sm" p="xl">
+        <Paper withBorder shadow="sm" p="xl" style={{ opacity: 0.9 }}>
           <Stack gap="lg">
             <Group>
-              <ThemeIcon size={60} radius="md" variant="light" color="green">
+              <ThemeIcon size={60} radius="md" variant="light" color="gray">
                 <IconDeviceDesktop size={30} />
               </ThemeIcon>
               <div>
                 <Title order={3}>ZK Bridge Config.exe</Title>
                 <Text c="dimmed" size="sm">
-                  Standalone Configuration Editor (Optional)
+                  Configuration Editor (Optional - Only if you need to change settings)
                 </Text>
               </div>
             </Group>
@@ -105,34 +105,33 @@ export default function BridgeInstaller() {
             <Divider />
 
             <div>
-              <Text fw={600} mb="sm">What is this?</Text>
+              <Text fw={600} mb="sm">When do you need this?</Text>
               <List spacing="xs" size="sm" c="dimmed">
-                <List.Item>Standalone configuration tool (no installation needed)</List.Item>
-                <List.Item>Use this to change bridge settings after installation</List.Item>
-                <List.Item>Test device connections</List.Item>
-                <List.Item>Test Supabase sync</List.Item>
-                <List.Item>Change device IP, port, or sync settings</List.Item>
+                <List.Item>✅ <strong>Most users don't need this</strong> - the full installer has everything pre-configured</List.Item>
+                <List.Item>Only download if you need to change settings after installation</List.Item>
+                <List.Item>For example: changing device IP, port, or sync interval</List.Item>
+                <List.Item>Or to test device connections and Supabase sync</List.Item>
               </List>
             </div>
 
-            <Alert icon={<IconInfoCircle size={18} />} title="When to use this" color="green" variant="light">
+            <Alert icon={<IconInfoCircle size={18} />} title="Important Note" color="gray" variant="light">
               <Text size="sm">
-                Download this if you need to change bridge settings after installation. The full installer already includes a configuration editor, but this standalone version is useful for quick changes without running the full installer.
+                <strong>The full installer already includes a configuration editor.</strong> You only need this standalone version if you want to change settings without accessing the installed bridge folder, or if you prefer a portable tool.
               </Text>
             </Alert>
 
             <Button
-              size="lg"
+              size="md"
               variant="light"
-              color="green"
-              leftSection={<IconDownload size={20} />}
+              color="gray"
+              leftSection={<IconDownload size={18} />}
               onClick={handleDownload}
               component="a"
               href="/ZK Bridge Config.exe"
               download="ZK Bridge Config.exe"
               fullWidth
             >
-              Download Config Editor
+              Download Config Editor (Optional)
             </Button>
 
             <Text size="xs" c="dimmed" ta="center">
