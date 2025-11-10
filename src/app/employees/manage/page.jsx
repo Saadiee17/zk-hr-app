@@ -363,24 +363,24 @@ export default function EmployeeManagementPage() {
       <Table.Td>{e?.is_active ? 'Enabled' : 'Disabled'}</Table.Td>
       <Table.Td>
         <Group gap="xs">
-          <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
-            setAssignEmp(e)
-            editForm.setValues({
-              full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
-              department_id: e.department_id || null,
-              privilege: e.privilege ?? 0,
-              is_active: Boolean(e.is_active),
-              card_number: e.card_number || '',
-              individual_tz_1: e.individual_tz_1 ?? null,
-              individual_tz_2: e.individual_tz_2 ?? null,
-              individual_tz_3: e.individual_tz_3 ?? null,
-            })
-            fetchExceptions(e.id)
-            fetchLeaveRequests(e.id)
-            setAssignOpen(true)
-          }}>
-            <IconEdit size={18} />
-          </ActionIcon>
+        <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
+          setAssignEmp(e)
+          editForm.setValues({
+            full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+            department_id: e.department_id || null,
+            privilege: e.privilege ?? 0,
+            is_active: Boolean(e.is_active),
+            card_number: e.card_number || '',
+            individual_tz_1: e.individual_tz_1 ?? null,
+            individual_tz_2: e.individual_tz_2 ?? null,
+            individual_tz_3: e.individual_tz_3 ?? null,
+          })
+          fetchExceptions(e.id)
+          fetchLeaveRequests(e.id)
+          setAssignOpen(true)
+        }}>
+          <IconEdit size={18} />
+        </ActionIcon>
           <ActionIcon variant="light" color="orange" aria-label="Reset Password" onClick={() => {
             setResetPasswordEmployee(e)
             setResetPasswordModal(true)

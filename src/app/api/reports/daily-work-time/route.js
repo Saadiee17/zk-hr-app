@@ -137,13 +137,24 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       const seg = segmentFromTz(tzString, weekday)
     const shift = getExpectedShift(seg)
     
-    if (shift) {
+    // IMPORTANT: Even if shift is null (day off), we still want to track the date
+    // so that if employee punches in on their day off, we can mark them as present
+    const isDayOff = !shift
+    
+    if (shift || isDayOff) {
+      // For day off, use full 24-hour range to catch any punches
+      const shiftToUse = shift || {
+        startHHMM: '0000',
+        endHHMM: '2359',
+        crossesMidnight: false
+      }
+      
       // Convert Pakistan local times to UTC times for matching
       // e.g., 20:00 Pakistan (8 PM) → 15:00 UTC
-      const startHour = parseInt(shift.startHHMM.slice(0, 2))
-      const startMin = parseInt(shift.startHHMM.slice(2, 4))
-      const endHour = parseInt(shift.endHHMM.slice(0, 2))
-      const endMin = parseInt(shift.endHHMM.slice(2, 4))
+      const startHour = parseInt(shiftToUse.startHHMM.slice(0, 2))
+      const startMin = parseInt(shiftToUse.startHHMM.slice(2, 4))
+      const endHour = parseInt(shiftToUse.endHHMM.slice(0, 2))
+      const endMin = parseInt(shiftToUse.endHHMM.slice(2, 4))
       
       // Convert to UTC by subtracting Pakistan offset
         // For overnight shifts, we need to be careful about day boundaries
@@ -163,7 +174,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         }
         
         // For overnight shifts, end is always on next day
-        if (shift.crossesMidnight) {
+        if (shiftToUse.crossesMidnight) {
           utcEndDayOffset = 1
         }
       
@@ -173,7 +184,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       
       // Update shift object with UTC times
       const utcShift = {
-        ...shift,
+        ...shiftToUse,
         startHHMM: utcStartHHMM,
         endHHMM: utcEndHHMM
       }
@@ -204,7 +215,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
             shiftStartUTC: actualShiftStartUTC.toISOString(),
             shiftStartPakistan: new Date(actualShiftStartUTC.getTime() + 5*60*60*1000).toISOString(),
             groupingDate: groupingDate,
-            pakistanHHMM: shift.startHHMM
+            pakistanHHMM: shiftToUse.startHHMM
           })
         }
         
@@ -217,11 +228,13 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         shift: utcShift,
             utcDate: utcStartDate, // Use the actual UTC start date
         is_half_day: false, // Regular shifts are not half days
+        is_day_off: isDayOff, // Track if this was a scheduled day off
             tz_string: tzString, // Track which schedule this shift belongs to
             dateKey: groupingDate, // FIXED: Use working day date for grouping
             utcEndDayOffset: utcEndDayOffset, // Track end day offset for proper window calculation
       })
-          console.log(`[daily-work-time] Shift ${utcDateStr} (${tzString}): Pakistan ${shift.startHHMM}-${shift.endHHMM} → UTC ${utcStartHHMM}-${utcEndHHMM} (UTC date: ${utcDateStr}, Working Day: ${groupingDate}, end offset: ${utcEndDayOffset} days)`)
+          const shiftDesc = isDayOff ? 'DAY OFF (will track punches if any)' : `Pakistan ${shiftToUse.startHHMM}-${shiftToUse.endHHMM} → UTC ${utcStartHHMM}-${utcEndHHMM}`
+          console.log(`[daily-work-time] Shift ${utcDateStr} (${tzString}): ${shiftDesc} (UTC date: ${utcDateStr}, Working Day: ${groupingDate}, end offset: ${utcEndDayOffset} days)`)
         }
       }
     }
@@ -404,6 +417,11 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     // SIMPLIFIED: Match based on shift windows only, no complex working day logic
     for (const [shiftKey, shiftInfo] of scheduledDaysByUTCDate) {
       const shift = shiftInfo.shift
+      // Ensure shift has required properties
+      if (!shift || typeof shift.startHHMM !== 'string' || typeof shift.endHHMM !== 'string') {
+        console.warn(`[daily-work-time] Skipping invalid shift:`, shiftInfo)
+        continue
+      }
       const startClock = parseHHMM(shift.startHHMM)
       const endClock = parseHHMM(shift.endHHMM)
       
@@ -552,10 +570,13 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     }
     
     if (punches.length === 0) {
-      // No punches - check if it's a leave day, half day, or absent
+      // No punches - check if it's a leave day, half day, day off, or absent
       let status = 'Absent'
       if (leaveDates.has(pakistanDateStr)) {
         status = 'On Leave'
+      } else if (shiftInfo.is_day_off) {
+        // Scheduled day off with no punches - don't mark as absent
+        status = 'Day Off'
       } else if (shiftInfo.is_half_day) {
         status = 'Half Day'
       }
@@ -570,6 +591,8 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       })
       if (status === 'On Leave') {
         console.log(`[daily-work-time] Shift ${dateKey} (display as ${displayDateStr}): On Leave`)
+      } else if (status === 'Day Off') {
+        console.log(`[daily-work-time] Shift ${dateKey} (display as ${displayDateStr}): Day Off (no punches)`)
       } else if (status === 'Half Day') {
         console.log(`[daily-work-time] Shift ${dateKey} (display as ${displayDateStr}): Half Day (no punches)`)
       }
@@ -584,7 +607,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       
       // Process the shift - use the specific schedule's tz_string for this shift
       const shiftSchedule = { employee_id: schedule.employee_id, tz_string: shiftInfo.tz_string }
-      const processedShift = processShift(sortedPunches, shiftInfo.utcDate, shiftSchedule, graceMinutes, leaveDates, pakistanDateStr, shiftInfo.is_half_day || false)
+      const processedShift = processShift(sortedPunches, shiftInfo.utcDate, shiftSchedule, graceMinutes, leaveDates, pakistanDateStr, shiftInfo.is_half_day || false, shiftInfo.is_day_off || false)
       
       // Use working day date for display if enabled
       processedShift.date = displayDateStr
@@ -653,9 +676,10 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
 // SIMPLIFIED: Use first punch as IN and last punch as OUT if within same shift window
 // Note: If punches exist, employee worked (status is On-Time/Late-In), even if on a leave day
 // If is_half_day is true, regular hours are halved
+// If is_day_off is true, employee worked on scheduled day off
 // MAX_SHIFT_DURATION: 12 hours - if time between first and last punch exceeds this, assume forgot to punch out
 const MAX_SHIFT_DURATION_HOURS = 12
-const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pakistanDateStr, is_half_day = false) => {
+const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pakistanDateStr, is_half_day = false, is_day_off = false) => {
   if (punches.length === 0) {
     return {
       date: shiftDate.toISOString().slice(0, 10),
@@ -872,6 +896,19 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       regularHours: Math.round(durationHours * 100) / 100,
       overtimeHours: 0,
       status: forgotPunchOut ? 'Punch Out Missing' : 'Present',
+    }
+  }
+  
+  // If it's a scheduled day off and employee showed up, mark as "Worked on Day Off"
+  if (is_day_off) {
+    return {
+      date: shiftDate.toISOString().slice(0, 10),
+      inTime: inTime ? inTime.toISOString() : null,
+      outTime: forgotPunchOut ? null : (outTime ? outTime.toISOString() : null),
+      durationHours: Math.round(durationHours * 100) / 100,
+      regularHours: Math.round(durationHours * 100) / 100,
+      overtimeHours: 0,
+      status: forgotPunchOut ? 'Punch Out Missing' : 'Worked on Day Off',
     }
   }
   

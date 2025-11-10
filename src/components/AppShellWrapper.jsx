@@ -54,7 +54,7 @@ export function AppShellWrapper({ children }) {
         {isEmployeeRoute ? (
           <EmployeeNavbar />
         ) : (
-          <Navbar onNavigate={close} />
+        <Navbar onNavigate={close} />
         )}
       </AppShell.Navbar>
       <AppShell.Main

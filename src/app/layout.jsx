@@ -32,9 +32,9 @@ export default function RootLayout({ children }) {
       <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
-            <AppShellWrapper>
-              {children}
-            </AppShellWrapper>
+          <AppShellWrapper>
+            {children}
+          </AppShellWrapper>
           </AuthProvider>
         </ThemeProvider>
       </body>
