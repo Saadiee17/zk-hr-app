@@ -9,7 +9,8 @@ export async function middleware(request) {
   const { pathname } = request.nextUrl
 
   // Protected employee routes
-  const isEmployeeRoute = pathname.startsWith('/employee') && 
+  // IMPORTANT: Use exact match for '/employee/' to avoid matching '/employees'
+  const isEmployeeRoute = pathname.startsWith('/employee/') && 
                           !pathname.startsWith('/employee/login') &&
                           !pathname.startsWith('/employee/setup-password')
 

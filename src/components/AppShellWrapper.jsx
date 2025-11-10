@@ -15,7 +15,8 @@ export function AppShellWrapper({ children }) {
   const mainBg = theme.colorScheme === 'dark' ? theme.colors.dark[7] : theme.colors.gray[0]
 
   // Check if we're on an employee route (excluding auth pages)
-  const isEmployeeRoute = pathname?.startsWith('/employee') && 
+  // IMPORTANT: Use exact match for '/employee' to avoid matching '/employees'
+  const isEmployeeRoute = pathname?.startsWith('/employee/') && 
                           !pathname.includes('/login') && 
                           !pathname.includes('/setup-password')
   

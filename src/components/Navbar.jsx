@@ -1,13 +1,15 @@
 'use client'
 
-import { Group, Image, NavLink, Tooltip, AppShell, Stack, ActionIcon, useMantineColorScheme } from '@mantine/core'
-import { IconDashboard, IconSun, IconMoon, IconCalendar, IconUsers, IconBuilding, IconDeviceDesktop, IconReport, IconUserPlus, IconDownload } from '@tabler/icons-react'
+import { Group, Image, NavLink, Tooltip, AppShell, Stack, ActionIcon, useMantineColorScheme, Button } from '@mantine/core'
+import { IconDashboard, IconSun, IconMoon, IconCalendar, IconUsers, IconBuilding, IconDeviceDesktop, IconReport, IconUserPlus, IconDownload, IconUser } from '@tabler/icons-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export function Navbar({ onNavigate }) {
   const pathname = usePathname()
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
+  const { user } = useAuth()
 
   return (
     <>
@@ -153,6 +155,26 @@ export function Navbar({ onNavigate }) {
               />
             </div>
           </Tooltip>
+
+          {user?.isAdmin && (
+            <>
+              <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+                <Button
+                  component={Link}
+                  href="/employee/dashboard"
+                  fullWidth
+                  variant="filled"
+                  color="blue"
+                  leftSection={<IconUser size={18} />}
+                  size="md"
+                  style={{ fontWeight: 600 }}
+                  onClick={onNavigate}
+                >
+                  Employee View
+                </Button>
+              </div>
+            </>
+          )}
         </Stack>
       </AppShell.Section>
 
