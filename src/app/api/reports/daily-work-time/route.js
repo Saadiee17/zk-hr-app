@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getSession, isAdmin } from '@/lib/auth'
 
 // Helpers
 const parseHHMM = (hhmm) => {
@@ -412,9 +413,34 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       const endDayOffset = shiftInfo.utcEndDayOffset !== undefined ? shiftInfo.utcEndDayOffset : (shift.crossesMidnight ? 1 : 0)
       let windowEnd = isoAt(new Date(shiftInfo.utcDate.getTime() + endDayOffset * dayMs), endClock)
       
-      // Add buffer: 2 hours before start, 10 hours after end
+      // Add buffer: 2 hours before start
       const bufferStart = addMinutes(windowStart, -120)
-      const bufferEnd = addMinutes(windowEnd, 600)
+      
+      // CRITICAL FIX: When working day is enabled, extend buffer end to working day boundary
+      // This ensures late punch-outs within the working day are still matched to the correct shift
+      // Example: Night 8-5 shift (11/06 8 PM to 11/07 5 AM) belongs to 11/06 working day
+      //          11/06 working day ends at 11/07 10 AM → buffer extends to 11/07 10 AM
+      let bufferEnd
+      if (workingDayEnabled) {
+        // Parse working day start time (e.g., "10:00" -> { hour: 10, minute: 0 })
+        const [workingDayHour, workingDayMinute] = workingDayStartTime.split(':').map(Number)
+        
+        // The buffer should extend to the END of this shift's working day
+        // Working day date is in shiftInfo.dateKey (e.g., "2025-11-06")
+        // End of 11/06 working day = 10 AM on 11/07 (start of 11/07 working day)
+        const workingDayDate = new Date(shiftInfo.dateKey + 'T00:00:00Z')
+        const nextDay = new Date(workingDayDate.getTime() + dayMs)
+        
+        // Calculate working day end in UTC
+        // Example: 11/07 10:00 Pakistan = 11/07 05:00 UTC
+        const pakistanOffsetMs = 5 * 60 * 60 * 1000
+        const workingDayEndPakistan = new Date(nextDay.getTime() + pakistanOffsetMs) // Convert to "Pakistan UTC" (not real Pakistan time, just for calculation)
+        workingDayEndPakistan.setUTCHours(workingDayHour, workingDayMinute, 0, 0)
+        bufferEnd = new Date(workingDayEndPakistan.getTime() - pakistanOffsetMs) // Convert back to actual UTC
+      } else {
+        // Default: 10 hours after shift end
+        bufferEnd = addMinutes(windowEnd, 600)
+      }
       
       // Check if punch is within this shift's window
       if (log.t >= bufferStart && log.t <= bufferEnd) {
@@ -780,8 +806,36 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       const durationMs = outTime.getTime() - inTime.getTime()
       const durationHoursRaw = durationMs / (60 * 60 * 1000)
       
-      // If duration exceeds maximum, they likely forgot to punch out
-      if (durationHoursRaw > MAX_SHIFT_DURATION_HOURS) {
+      // CRITICAL FIX: Only apply the 12-hour max duration check if the last punch is NOT after shift end
+      // If the last punch is after shift end (and was matched to this shift), it's a valid OUT punch
+      // regardless of duration. This handles cases where someone works overtime or punches out late
+      // within the working day boundary (e.g., Night 8-5 shift, punch out at 7 AM within 10 AM working day end)
+      let isLastPunchAfterShiftEnd = false
+      if (schedule && schedule.tz_string) {
+        const shiftDateObj = new Date(shiftDate)
+        shiftDateObj.setUTCHours(0, 0, 0, 0)
+        const weekday = shiftDateObj.getUTCDay()
+        const seg = segmentFromTz(schedule.tz_string, weekday)
+        const shift = getExpectedShift(seg)
+        
+        if (shift) {
+          const endClock = parseHHMM(shift.endHHMM)
+          const PAKISTAN_OFFSET_HOURS = 5
+          let utcEndHour = endClock.h - PAKISTAN_OFFSET_HOURS
+          if (utcEndHour < 0) utcEndHour += 24
+          const utcEndClock = { h: utcEndHour, m: endClock.m }
+          let expectedEnd = isoAt(shiftDateObj, utcEndClock)
+          if (shift.crossesMidnight) {
+            expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
+          }
+          
+          // If last punch is after shift end, it's a legitimate OUT punch
+          isLastPunchAfterShiftEnd = lastPunch.t >= expectedEnd
+        }
+      }
+      
+      // If duration exceeds maximum AND last punch is not after shift end, they likely forgot to punch out
+      if (durationHoursRaw > MAX_SHIFT_DURATION_HOURS && !isLastPunchAfterShiftEnd) {
         forgotPunchOut = true
         outTime = null
       }
@@ -875,9 +929,10 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       const actualShiftEnd = expectedEnd
       
       // Check if first punch is within the actual shift window
-      // Allow small buffer (1 hour) for early/late arrivals within shift
-      const strictBufferStart = addMinutes(actualShiftStart, -60)
-      const strictBufferEnd = addMinutes(actualShiftEnd, 60)
+      // NOTE: This buffer should be generous to avoid marking valid punches as "Out of Schedule"
+      // For now, keep a reasonable buffer of 2 hours before and after
+      const strictBufferStart = addMinutes(actualShiftStart, -120)
+      const strictBufferEnd = addMinutes(actualShiftEnd, 120)
       
       console.log(`[daily-work-time] Status check for shift ${pakistanDateStr}:`)
       console.log(`  Shift window: ${actualShiftStart.toISOString()} - ${actualShiftEnd.toISOString()}`)
@@ -933,10 +988,16 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
 // GET /api/reports/daily-work-time?employee_id=UUID&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
 export async function GET(req) {
   try {
+    const session = await getSession(req)
     const url = new URL(req.url)
-    const employeeId = url.searchParams.get('employee_id')
+    let employeeId = url.searchParams.get('employee_id')
     const startDateStr = url.searchParams.get('start_date')
     const endDateStr = url.searchParams.get('end_date')
+
+    // Session-based access control: Non-admins can only see their own reports
+    if (session && !isAdmin(session)) {
+      employeeId = session.employeeId
+    }
 
     if (!employeeId || !startDateStr || !endDateStr) {
       return NextResponse.json({ error: 'employee_id, start_date and end_date are required' }, { status: 400 })

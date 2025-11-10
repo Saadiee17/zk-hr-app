@@ -8,7 +8,8 @@ export async function PATCH(req, { params } = {}) {
     const url = new URL(req.url)
     const pathParts = url.pathname.split('/')
     const fallbackId = pathParts[pathParts.length - 1] || null
-    const { id: paramId } = params || {}
+    const resolvedParams = params ? await params : {}
+    const { id: paramId } = resolvedParams
     const id = paramId || fallbackId
     if (!id) {
       return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
@@ -48,6 +49,8 @@ export async function PATCH(req, { params } = {}) {
     return NextResponse.json({ error: error.message || 'Unexpected error' }, { status: 500 })
   }
 }
+
+
 
 
 

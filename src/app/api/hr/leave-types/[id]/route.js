@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-function resolveId(req, params) {
-  const id = params?.id
+async function resolveId(req, params) {
+  if (!params) return null
+  const resolvedParams = await params
+  const id = resolvedParams?.id
   if (!id || typeof id !== 'string') {
     try {
       const url = new URL(req.url)
@@ -22,7 +24,7 @@ function resolveId(req, params) {
 // PATCH /api/hr/leave-types/[id] - Update a leave type
 export async function PATCH(req, { params } = {}) {
   try {
-    const id = resolveId(req, params)
+    const id = await resolveId(req, params)
     if (!id) {
       return NextResponse.json({ error: 'Missing leave type id' }, { status: 400 })
     }
@@ -94,7 +96,7 @@ export async function PATCH(req, { params } = {}) {
 // DELETE /api/hr/leave-types/[id] - Soft delete (set is_active = false)
 export async function DELETE(req, { params } = {}) {
   try {
-    const id = resolveId(req, params)
+    const id = await resolveId(req, params)
     if (!id) {
       return NextResponse.json({ error: 'Missing leave type id' }, { status: 400 })
     }

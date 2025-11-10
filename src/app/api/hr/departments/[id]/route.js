@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 // PATCH /api/hr/departments/[id] - Update department by ID (service role)
 export async function PATCH(req, { params }) {
   try {
-    const id = params?.id
+    const { id } = await params
     if (!id) {
       return NextResponse.json({ error: 'Missing department id' }, { status: 400 })
     }
@@ -58,7 +58,7 @@ export async function PATCH(req, { params }) {
 // DELETE /api/hr/departments/[id] - Delete department by ID (service role)
 export async function DELETE(req, { params }) {
   try {
-    const id = params?.id
+    const { id } = await params
     if (!id) {
       return NextResponse.json({ error: 'Missing department id' }, { status: 400 })
     }

@@ -194,3 +194,5 @@ Already created: `scripts/validate-attendance-logs.js`
 5. Update device setup guide with timezone information
 
 
+
+

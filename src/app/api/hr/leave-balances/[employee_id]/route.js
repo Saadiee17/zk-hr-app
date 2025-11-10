@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-function resolveEmployeeId(req, params) {
-  const id = params?.employee_id
+async function resolveEmployeeId(req, params) {
+  if (!params) return null
+  const resolvedParams = await params
+  const id = resolvedParams?.employee_id
   if (!id || typeof id !== 'string') {
     try {
       const url = new URL(req.url)
@@ -22,7 +24,7 @@ function resolveEmployeeId(req, params) {
 // PATCH /api/hr/leave-balances/[employee_id] - Update leave balance for an employee
 export async function PATCH(req, { params } = {}) {
   try {
-    const employeeId = resolveEmployeeId(req, params)
+    const employeeId = await resolveEmployeeId(req, params)
     if (!employeeId) {
       return NextResponse.json({ error: 'Missing employee_id' }, { status: 400 })
     }

@@ -224,3 +224,5 @@ Not counted: 1 (very late night shift)
 
 **This is by design to show meaningful metrics for the current working period!**
 
+
+

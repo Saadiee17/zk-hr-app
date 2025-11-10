@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getSession, isAdmin } from '@/lib/auth'
 
 // GET /api/hr/leave-requests?employee_id=UUID (optional) - Fetch leave requests, optionally filtered by employee
 export async function GET(req) {
   try {
+    const session = await getSession(req)
     const url = new URL(req.url)
-    const employee_id = url.searchParams.get('employee_id')
+    let employee_id = url.searchParams.get('employee_id')
+
+    // Session-based access control: Non-admins can only see their own requests
+    if (session && !isAdmin(session)) {
+      employee_id = session.employeeId
+    }
 
     let query = supabase
       .from('leave_requests')
@@ -25,7 +32,7 @@ export async function GET(req) {
       `)
       .order('start_date', { ascending: false })
 
-    // Filter by employee_id if provided
+    // Filter by employee_id if provided or enforced by session
     if (employee_id) {
       query = query.eq('employee_id', employee_id)
     }
@@ -42,10 +49,17 @@ export async function GET(req) {
 // POST /api/hr/leave-requests - Create a new leave request
 export async function POST(req) {
   try {
+    const session = await getSession(req)
     const body = await req.json()
-    const { employee_id, leave_type, leave_type_id, start_date, end_date, reason, status } = body
+    let { employee_id, leave_type, leave_type_id, start_date, end_date, reason, status } = body
+
+    // Session-based access control: Non-admins can only create requests for themselves
+    if (session && !isAdmin(session)) {
+      employee_id = session.employeeId
+    }
 
     console.log('[leave-requests] POST request body:', body)
+    console.log('[leave-requests] Final employee_id:', employee_id)
 
     if (!employee_id || !start_date || !end_date) {
       return NextResponse.json({ 

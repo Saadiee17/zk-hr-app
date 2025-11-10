@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-function resolveId(req, params) {
-  const id = params?.id
+async function resolveId(req, params) {
+  if (!params) return null
+  const resolvedParams = await params
+  const id = resolvedParams?.id
   if (!id || typeof id !== 'string') {
     try {
       const url = new URL(req.url)
@@ -22,7 +24,7 @@ function resolveId(req, params) {
 // GET /api/hr/leave-requests/[id] - Get single leave request
 export async function GET(req, { params } = {}) {
   try {
-    const id = resolveId(req, params)
+    const id = await resolveId(req, params)
     if (!id) {
       return NextResponse.json({ error: 'Missing leave request id' }, { status: 400 })
     }
@@ -67,7 +69,7 @@ export async function GET(req, { params } = {}) {
 // PATCH /api/hr/leave-requests/[id] - Update request (approve/reject/cancel)
 export async function PATCH(req, { params } = {}) {
   try {
-    const id = resolveId(req, params)
+    const id = await resolveId(req, params)
     if (!id) {
       return NextResponse.json({ error: 'Missing leave request id' }, { status: 400 })
     }
@@ -202,7 +204,7 @@ export async function PATCH(req, { params } = {}) {
 // DELETE /api/hr/leave-requests/[id] - Delete request (only if pending)
 export async function DELETE(req, { params } = {}) {
   try {
-    const id = resolveId(req, params)
+    const id = await resolveId(req, params)
     if (!id) {
       return NextResponse.json({ error: 'Missing leave request id' }, { status: 400 })
     }

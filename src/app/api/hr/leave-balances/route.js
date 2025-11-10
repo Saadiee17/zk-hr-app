@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getSession, isAdmin } from '@/lib/auth'
 
 // GET /api/hr/leave-balances - Fetch leave balances with optional filters
 export async function GET(req) {
   try {
+    const session = await getSession(req)
     const { searchParams } = new URL(req.url)
-    const employeeId = searchParams.get('employee_id')
+    let employeeId = searchParams.get('employee_id')
     const leaveTypeId = searchParams.get('leave_type_id')
     const year = searchParams.get('year') || new Date().getFullYear()
+
+    // Session-based access control: Non-admins can only see their own balances
+    if (session && !isAdmin(session)) {
+      employeeId = session.employeeId
+    }
 
     let query = supabase
       .from('leave_balances')

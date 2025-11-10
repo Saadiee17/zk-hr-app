@@ -6,6 +6,7 @@ import "@mantine/dates/styles.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AppShellWrapper } from "@/components/AppShellWrapper";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,9 +31,11 @@ export default function RootLayout({ children }) {
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
         <ThemeProvider>
-          <AppShellWrapper>
-            {children}
-          </AppShellWrapper>
+          <AuthProvider>
+            <AppShellWrapper>
+              {children}
+            </AppShellWrapper>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

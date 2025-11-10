@@ -121,3 +121,5 @@ This proves the device is operating in UTC+8 timezone.
 The earlier "data corruption with +7 hour offset" was based on old corrupted data. The **actual device offset is +8 hours, not +7**. The current issue is ongoing because pyzk is returning local device time (UTC+8) without converting to UTC, and the sync API is treating it as UTC, causing the +8 hour corruption in the database.
 
 
+
+

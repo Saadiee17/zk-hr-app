@@ -688,7 +688,7 @@ function Dashboard() {
             <Group gap="xs">
               <Text size="sm" fw={500} c="dimmed">Auto-refresh: Every 2 minutes</Text>
               <Badge size="sm" variant="dot" color="green">Active</Badge>
-            </Group>
+          </Group>
             <Button
               onClick={() => fetchMetrics(false)}
               loading={metricsLoading}
@@ -905,7 +905,7 @@ function Dashboard() {
                     <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
                       <Text component="span" className="employee-name-link" fw={500}>
                         {emp.name}
-                      </Text>
+          </Text>
                     </Link>
                   </Table.Td>
                   <Table.Td>
@@ -938,7 +938,7 @@ function Dashboard() {
         ) : (
           <Table 
             striped 
-            highlightOnHover
+            highlightOnHover 
             withTableBorder
             withColumnBorders={false}
           >

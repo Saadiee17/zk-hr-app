@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconEdit, IconCheck, IconX, IconCalendar, IconSearch } from '@tabler/icons-react'
+import { IconEdit, IconCheck, IconX, IconCalendar, IconSearch, IconLockOpen } from '@tabler/icons-react'
 import { useForm } from '@mantine/form'
 import { Calendar, TimeInput } from '@mantine/dates'
 import Link from 'next/link'
@@ -32,6 +32,8 @@ export default function EmployeeManagementPage() {
   const [timeZones, setTimeZones] = useState([])
   const [empSort, setEmpSort] = useState({ key: 'name', dir: 'asc' })
   const [searchQuery, setSearchQuery] = useState('')
+  const [resetPasswordModal, setResetPasswordModal] = useState(false)
+  const [resetPasswordEmployee, setResetPasswordEmployee] = useState(null)
 
   const editForm = useForm({
     initialValues: {
@@ -188,6 +190,40 @@ export default function EmployeeManagementPage() {
     }
   }
 
+  const handleResetPassword = async () => {
+    if (!resetPasswordEmployee) return
+    
+    try {
+      const res = await fetch('/api/auth/admin-reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: resetPasswordEmployee.id }),
+      })
+      
+      const data = await res.json()
+      
+      if (res.ok) {
+        notifications.show({
+          title: 'Success',
+          message: 'Password reset successfully. Employee will be prompted to set a new password on next login.',
+          color: 'green',
+          icon: <IconCheck size={18} />,
+        })
+        setResetPasswordModal(false)
+        setResetPasswordEmployee(null)
+      } else {
+        throw new Error(data.error || 'Failed to reset password')
+      }
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error.message,
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    }
+  }
+
   const fetchLeaveRequests = async (employeeId) => {
     if (!employeeId) return
     try {
@@ -326,24 +362,32 @@ export default function EmployeeManagementPage() {
       <Table.Td>{e?.privilege_text ?? e?.privilege ?? ''}</Table.Td>
       <Table.Td>{e?.is_active ? 'Enabled' : 'Disabled'}</Table.Td>
       <Table.Td>
-        <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
-          setAssignEmp(e)
-          editForm.setValues({
-            full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
-            department_id: e.department_id || null,
-            privilege: e.privilege ?? 0,
-            is_active: Boolean(e.is_active),
-            card_number: e.card_number || '',
-            individual_tz_1: e.individual_tz_1 ?? null,
-            individual_tz_2: e.individual_tz_2 ?? null,
-            individual_tz_3: e.individual_tz_3 ?? null,
-          })
-          fetchExceptions(e.id)
-          fetchLeaveRequests(e.id)
-          setAssignOpen(true)
-        }}>
-          <IconEdit size={18} />
-        </ActionIcon>
+        <Group gap="xs">
+          <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
+            setAssignEmp(e)
+            editForm.setValues({
+              full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+              department_id: e.department_id || null,
+              privilege: e.privilege ?? 0,
+              is_active: Boolean(e.is_active),
+              card_number: e.card_number || '',
+              individual_tz_1: e.individual_tz_1 ?? null,
+              individual_tz_2: e.individual_tz_2 ?? null,
+              individual_tz_3: e.individual_tz_3 ?? null,
+            })
+            fetchExceptions(e.id)
+            fetchLeaveRequests(e.id)
+            setAssignOpen(true)
+          }}>
+            <IconEdit size={18} />
+          </ActionIcon>
+          <ActionIcon variant="light" color="orange" aria-label="Reset Password" onClick={() => {
+            setResetPasswordEmployee(e)
+            setResetPasswordModal(true)
+          }}>
+            <IconLockOpen size={18} />
+          </ActionIcon>
+        </Group>
       </Table.Td>
     </Table.Tr>
   ))
@@ -802,6 +846,45 @@ export default function EmployeeManagementPage() {
               )}
             </Grid.Col>
           </Grid>
+        </Modal>
+
+        {/* Reset Password Modal */}
+        <Modal
+          opened={resetPasswordModal}
+          onClose={() => {
+            setResetPasswordModal(false)
+            setResetPasswordEmployee(null)
+          }}
+          title="Reset Employee Password"
+        >
+          <Stack gap="md">
+            <Text>
+              Are you sure you want to reset the password for{' '}
+              <strong>
+                {resetPasswordEmployee
+                  ? `${resetPasswordEmployee.first_name || ''} ${resetPasswordEmployee.last_name || ''}`.trim() || 'this employee'
+                  : 'this employee'}
+              </strong>
+              ?
+            </Text>
+            <Text size="sm" c="dimmed">
+              The employee will be required to set a new password on their next login attempt.
+            </Text>
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                onClick={() => {
+                  setResetPasswordModal(false)
+                  setResetPasswordEmployee(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button color="orange" onClick={handleResetPassword}>
+                Reset Password
+              </Button>
+            </Group>
+          </Stack>
         </Modal>
       </Paper>
     </Container>
