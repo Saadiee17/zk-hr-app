@@ -18,10 +18,12 @@ import {
   Card,
   Collapse,
   ActionIcon,
-  Box
+  Box,
+  Tabs,
+  TextInput
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconRefresh, IconCheck, IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
+import { IconRefresh, IconCheck, IconX, IconChevronDown, IconChevronUp, IconSearch } from '@tabler/icons-react'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
@@ -58,6 +60,10 @@ function Dashboard() {
   
   // State for department collapse
   const [expandedDepartments, setExpandedDepartments] = useState({})
+  
+  // State for search and tabs
+  const [logsSearchQuery, setLogsSearchQuery] = useState('')
+  const [activeTab, setActiveTab] = useState('status')
 
   // Fetch attendance logs with pagination
   const fetchLogs = async (page = 1, limit = 50) => {
@@ -473,8 +479,33 @@ function Dashboard() {
     return 'Unknown'
   }
 
+  // Filter logs based on search query
+  const filteredLogs = logs.filter((log) => {
+    if (!logsSearchQuery.trim()) return true
+    
+    const query = logsSearchQuery.toLowerCase()
+    const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
+    const employeeName = getEmployeeName(log.employees).toLowerCase()
+    const zkUserId = String(log.zk_user_id || '').toLowerCase()
+    const department = String(log.department_name || '').toLowerCase()
+    const punchText = String(log.punch_text || '').toLowerCase()
+    const statusText = String(log.status_text || '').toLowerCase()
+    const logTime = formatDateTime(log.log_time).toLowerCase()
+    const syncedAt = formatDateTime(log.synced_at).toLowerCase()
+    
+    return (
+      employeeName.includes(query) ||
+      zkUserId.includes(query) ||
+      department.includes(query) ||
+      punchText.includes(query) ||
+      statusText.includes(query) ||
+      logTime.includes(query) ||
+      syncedAt.includes(query)
+    )
+  })
+
   // Table rows for logs
-  const rows = logs.map((log) => {
+  const rows = filteredLogs.map((log) => {
     const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
     const employeeId = employee?.id
     const employeeName = getEmployeeName(log.employees)
@@ -701,110 +732,118 @@ function Dashboard() {
         </Group>
       </Paper>
 
-        {/* Department-Wise Employee Status - Modern */}
-        <Paper withBorder p="md" radius="lg">
-        <Stack gap="md">
-          <div>
-            <Title order={3} mb={4}>Employee Status by Department</Title>
-            <Text size="sm" c="dimmed">Real-time attendance overview (same calculation as badges above ✅)</Text>
-          </div>
-          
-          {metricsLoading ? (
-            <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
-          ) : departmentEmployees.length === 0 ? (
-            <Text c="dimmed" ta="center" py="md">No employee data available</Text>
-          ) : (
-            <Stack gap="sm">
-              {departmentEmployees.map((dept) => (
-                <Card key={dept.department} withBorder radius="md">
-                  <Group 
-                    justify="space-between" 
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => {
-                      setExpandedDepartments(prev => ({
-                        ...prev,
-                        [dept.department]: !prev[dept.department]
-                      }))
-                    }}
-                  >
-                    <div>
-                      <Text fw={600} size="lg">{dept.department}</Text>
-                      <Text size="sm" c="dimmed">{dept.employees.length} employees</Text>
-                    </div>
-                    <ActionIcon variant="subtle" size="lg">
-                      {expandedDepartments[dept.department] ? 
-                        <IconChevronUp size={20} /> : 
-                        <IconChevronDown size={20} />
-                      }
-                    </ActionIcon>
-        </Group>
-                  
-                  <Collapse in={expandedDepartments[dept.department]}>
-                    <div style={{ marginTop: '1rem' }}>
-          <Table 
-            striped 
-            highlightOnHover 
-                        style={{ tableLayout: 'fixed', width: '100%' }}
-                      >
-                        <colgroup>
-                          <col style={{ width: '25%' }} />
-                          <col style={{ width: '25%' }} />
-                          <col style={{ width: '20%' }} />
-                          <col style={{ width: '30%' }} />
-                        </colgroup>
-                        <Table.Thead>
-                          <Table.Tr>
-                            <Table.Th>Name</Table.Th>
-                            <Table.Th>Schedule</Table.Th>
-                            <Table.Th>Status</Table.Th>
-                            <Table.Th>Login Time</Table.Th>
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                          {dept.employees.map((emp) => {
-                            let badgeColor = 'gray'
-                            if (emp.status === 'On-Time') badgeColor = 'green'
-                            else if (emp.status === 'Late-In') badgeColor = 'orange'
-                            else if (emp.status === 'Absent') badgeColor = 'red'
-                            else if (emp.status === 'Shift Not Started') badgeColor = 'blue'
-                            else if (emp.status === 'Punch Out Missing') badgeColor = 'yellow'
-                            else if (emp.status === 'Out of Schedule') badgeColor = 'grape'
-                            
-                            return (
-                              <Table.Tr key={emp.id}>
-                                <Table.Td>
-                                  <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                                    <Text component="span" className="employee-name-link">
-                                      {emp.name}
-                                    </Text>
-                                  </Link>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Text size="sm">{emp.schedule}</Text>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Badge color={badgeColor} variant="light">
-                                    {emp.status}
-                                  </Badge>
-                                </Table.Td>
-                                <Table.Td>
-                                  <Text size="sm">
-                                    {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'No punch'}
-                                  </Text>
-                                </Table.Td>
-                              </Table.Tr>
-                            )
-                          })}
-                        </Table.Tbody>
-                      </Table>
-                    </div>
-                  </Collapse>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </Stack>
-      </Paper>
+        {/* Tabs for Status by Department and Attendance Logs */}
+        <Tabs value={activeTab} onChange={setActiveTab}>
+          <Tabs.List>
+            <Tabs.Tab value="status">Employee Status by Department</Tabs.Tab>
+            <Tabs.Tab value="logs">Recent Attendance Logs</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="status" pt="md">
+            <Paper withBorder p="md" radius="lg">
+              <Stack gap="md">
+                <div>
+                  <Title order={3} mb={4}>Employee Status by Department</Title>
+                  <Text size="sm" c="dimmed">Real-time attendance overview (same calculation as badges above ✅)</Text>
+                </div>
+                
+                {metricsLoading ? (
+                  <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
+                ) : departmentEmployees.length === 0 ? (
+                  <Text c="dimmed" ta="center" py="md">No employee data available</Text>
+                ) : (
+                  <Stack gap="sm">
+                    {departmentEmployees.map((dept) => (
+                      <Card key={dept.department} withBorder radius="md">
+                        <Group 
+                          justify="space-between" 
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setExpandedDepartments(prev => ({
+                              ...prev,
+                              [dept.department]: !prev[dept.department]
+                            }))
+                          }}
+                        >
+                          <div>
+                            <Text fw={600} size="lg">{dept.department}</Text>
+                            <Text size="sm" c="dimmed">{dept.employees.length} employees</Text>
+                          </div>
+                          <ActionIcon variant="subtle" size="lg">
+                            {expandedDepartments[dept.department] ? 
+                              <IconChevronUp size={20} /> : 
+                              <IconChevronDown size={20} />
+                            }
+                          </ActionIcon>
+                        </Group>
+                        
+                        <Collapse in={expandedDepartments[dept.department]}>
+                          <div style={{ marginTop: '1rem' }}>
+                            <Table 
+                              striped 
+                              highlightOnHover 
+                              style={{ tableLayout: 'fixed', width: '100%' }}
+                            >
+                              <colgroup>
+                                <col style={{ width: '25%' }} />
+                                <col style={{ width: '25%' }} />
+                                <col style={{ width: '20%' }} />
+                                <col style={{ width: '30%' }} />
+                              </colgroup>
+                              <Table.Thead>
+                                <Table.Tr>
+                                  <Table.Th>Name</Table.Th>
+                                  <Table.Th>Schedule</Table.Th>
+                                  <Table.Th>Status</Table.Th>
+                                  <Table.Th>Login Time</Table.Th>
+                                </Table.Tr>
+                              </Table.Thead>
+                              <Table.Tbody>
+                                {dept.employees.map((emp) => {
+                                  let badgeColor = 'gray'
+                                  if (emp.status === 'On-Time') badgeColor = 'green'
+                                  else if (emp.status === 'Late-In') badgeColor = 'orange'
+                                  else if (emp.status === 'Absent') badgeColor = 'red'
+                                  else if (emp.status === 'Shift Not Started') badgeColor = 'blue'
+                                  else if (emp.status === 'Punch Out Missing') badgeColor = 'yellow'
+                                  else if (emp.status === 'Out of Schedule') badgeColor = 'grape'
+                                  
+                                  return (
+                                    <Table.Tr key={emp.id}>
+                                      <Table.Td>
+                                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                                          <Text component="span" className="employee-name-link">
+                                            {emp.name}
+                                          </Text>
+                                        </Link>
+                                      </Table.Td>
+                                      <Table.Td>
+                                        <Text size="sm">{emp.schedule}</Text>
+                                      </Table.Td>
+                                      <Table.Td>
+                                        <Badge color={badgeColor} variant="light">
+                                          {emp.status}
+                                        </Badge>
+                                      </Table.Td>
+                                      <Table.Td>
+                                        <Text size="sm">
+                                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'No punch'}
+                                        </Text>
+                                      </Table.Td>
+                                    </Table.Tr>
+                                  )
+                                })}
+                              </Table.Tbody>
+                            </Table>
+                          </div>
+                        </Collapse>
+                      </Card>
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
+            </Paper>
+          </Tabs.Panel>
 
       {/* Modals for Late, Absent, and On-Time Employees */}
       <Modal
@@ -1068,39 +1107,68 @@ function Dashboard() {
         )}
       </Modal>
 
-        {/* Attendance Logs - Modern */}
-        <div>
-          <Title order={2} mb="sm">Recent Attendance Logs</Title>
-          <Paper withBorder radius="lg" p="md">
-            <LoadingOverlay visible={loading} />
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>ZK User ID</Table.Th>
-                  <Table.Th>Employee</Table.Th>
-                  <Table.Th>Department</Table.Th>
-                  <Table.Th>Log Time</Table.Th>
-                  <Table.Th>Punch Status</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Synced At</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>{rows}</Table.Tbody>
-            </Table>
+          <Tabs.Panel value="logs" pt="md">
+            <Paper withBorder radius="lg" p="md">
+              <Stack gap="md">
+                <div>
+                  <Title order={3} mb={4}>Recent Attendance Logs</Title>
+                  <TextInput
+                    placeholder="Search by employee name, ZK User ID, department, punch status, time, etc..."
+                    leftSection={<IconSearch size={16} />}
+                    value={logsSearchQuery}
+                    onChange={(e) => setLogsSearchQuery(e.currentTarget.value)}
+                    mb="md"
+                  />
+                  {logsSearchQuery && (
+                    <Text size="sm" c="dimmed" mb="md">
+                      Showing {filteredLogs.length} of {logs.length} logs
+                    </Text>
+                  )}
+                </div>
+                
+                <LoadingOverlay visible={loading} />
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>ZK User ID</Table.Th>
+                      <Table.Th>Employee</Table.Th>
+                      <Table.Th>Department</Table.Th>
+                      <Table.Th>Log Time</Table.Th>
+                      <Table.Th>Punch Status</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Synced At</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {rows.length === 0 ? (
+                      <Table.Tr>
+                        <Table.Td colSpan={7}>
+                          <Text c="dimmed" ta="center" py="md">
+                            {logsSearchQuery ? 'No logs match your search' : 'No logs available'}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ) : (
+                      rows
+                    )}
+                  </Table.Tbody>
+                </Table>
 
-            {/* Pagination */}
-            <Group justify="center" mt="xl">
-              <Pagination 
-                total={totalPages} 
-                value={currentPage} 
-                onChange={(p) => {
-                  setCurrentPage(p)
-                  fetchLogs(p, logsPerPage)
-                }} 
-              />
-            </Group>
-      </Paper>
-        </div>
+                {/* Pagination */}
+                <Group justify="center" mt="xl">
+                  <Pagination 
+                    total={totalPages} 
+                    value={currentPage} 
+                    onChange={(p) => {
+                      setCurrentPage(p)
+                      fetchLogs(p, logsPerPage)
+                    }} 
+                  />
+                </Group>
+              </Stack>
+            </Paper>
+          </Tabs.Panel>
+        </Tabs>
       </Stack>
     </Box>
   )
