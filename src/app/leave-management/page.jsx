@@ -220,6 +220,7 @@ export default function LeaveManagementPage() {
   const [createRequestOpen, setCreateRequestOpen] = useState(false)
   const [approveRequestOpen, setApproveRequestOpen] = useState(false)
   const [rejectRequestOpen, setRejectRequestOpen] = useState(false)
+  const [changeStatusOpen, setChangeStatusOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
 
   const requestForm = useForm({
@@ -240,6 +241,13 @@ export default function LeaveManagementPage() {
 
   const approveForm = useForm({
     initialValues: {
+      rejection_reason: '',
+    },
+  })
+
+  const changeStatusForm = useForm({
+    initialValues: {
+      status: 'pending',
       rejection_reason: '',
     },
   })
@@ -385,6 +393,78 @@ export default function LeaveManagementPage() {
       notifications.show({
         title: 'Reject failed',
         message: error.message || 'Could not reject request',
+        color: 'red',
+        icon: <IconX size={18} />,
+      })
+    }
+  }
+
+  const handleChangeStatus = async (values) => {
+    try {
+      if (!selectedRequest?.id) return
+      const res = await fetch(`/api/hr/leave-requests/${selectedRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: values.status,
+          approved_by: null, // TODO: Get current user ID
+          rejection_reason: values.status === 'rejected' ? (values.rejection_reason || null) : null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to change status')
+      
+      // If approving, create schedule exceptions
+      if (values.status === 'approved') {
+        const checkRes = await fetch(`/api/hr/schedule-exceptions?employee_id=${selectedRequest.employee_id}`)
+        const checkJson = await checkRes.json()
+        const existingExceptions = checkJson.data || []
+        
+        const startDate = new Date(selectedRequest.start_date)
+        const endDate = new Date(selectedRequest.end_date)
+        const missingDates = []
+        
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0]
+          const exists = existingExceptions.some(ex => ex.date === dateStr)
+          if (!exists) {
+            missingDates.push(dateStr)
+          }
+        }
+        
+        if (missingDates.length > 0) {
+          for (const dateStr of missingDates) {
+            await fetch('/api/hr/schedule-exceptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                employee_id: selectedRequest.employee_id,
+                date: dateStr,
+                is_day_off: true,
+                is_half_day: false,
+                start_time: null,
+                end_time: null,
+              }),
+            })
+          }
+        }
+      }
+      
+      notifications.show({
+        title: 'Status updated',
+        message: `Leave request status changed to ${values.status}`,
+        color: 'green',
+        icon: <IconCheck size={18} />,
+      })
+      setChangeStatusOpen(false)
+      setSelectedRequest(null)
+      changeStatusForm.reset()
+      await fetchLeaveRequests()
+      await fetchLeaveBalances()
+    } catch (error) {
+      notifications.show({
+        title: 'Update failed',
+        message: error.message || 'Could not change status',
         color: 'red',
         icon: <IconX size={18} />,
       })
@@ -589,32 +669,48 @@ export default function LeaveManagementPage() {
                           {request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}
                         </Table.Td>
                         <Table.Td>
-                          {request.status === 'pending' && (
-                            <Group gap="xs">
-                              <Button
-                                size="xs"
-                                color="green"
-                                leftSection={<IconCheck size={14} />}
-                                onClick={() => {
-                                  setSelectedRequest(request)
-                                  setApproveRequestOpen(true)
-                                }}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="xs"
-                                color="red"
-                                leftSection={<IconX size={14} />}
-                                onClick={() => {
-                                  setSelectedRequest(request)
-                                  setRejectRequestOpen(true)
-                                }}
-                              >
-                                Reject
-                              </Button>
-                            </Group>
-                          )}
+                          <Group gap="xs">
+                            {request.status === 'pending' && (
+                              <>
+                                <Button
+                                  size="xs"
+                                  color="green"
+                                  leftSection={<IconCheck size={14} />}
+                                  onClick={() => {
+                                    setSelectedRequest(request)
+                                    setApproveRequestOpen(true)
+                                  }}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  color="red"
+                                  leftSection={<IconX size={14} />}
+                                  onClick={() => {
+                                    setSelectedRequest(request)
+                                    setRejectRequestOpen(true)
+                                  }}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                            <ActionIcon
+                              variant="light"
+                              color="blue"
+                              onClick={() => {
+                                setSelectedRequest(request)
+                                changeStatusForm.setValues({
+                                  status: request.status,
+                                  rejection_reason: request.rejection_reason || '',
+                                })
+                                setChangeStatusOpen(true)
+                              }}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </Group>
                         </Table.Td>
                       </Table.Tr>
                       )
@@ -842,6 +938,63 @@ export default function LeaveManagementPage() {
               <Button variant="default" onClick={() => setRejectRequestOpen(false)}>Cancel</Button>
               <Button color="red" type="submit">Reject</Button>
             </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {/* Change Status Modal */}
+      <Modal opened={changeStatusOpen} onClose={() => setChangeStatusOpen(false)} title="Change Leave Request Status">
+        <form onSubmit={changeStatusForm.onSubmit(handleChangeStatus)}>
+          <Stack>
+            {selectedRequest && (() => {
+              const leaveType = Array.isArray(selectedRequest.leave_types) 
+                ? selectedRequest.leave_types[0] 
+                : selectedRequest.leave_types
+              const leaveTypeName = leaveType?.name || leaveType?.code || '-'
+              
+              return (
+              <>
+                <Text>
+                  <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
+                </Text>
+                <Text>
+                  <strong>Leave Type:</strong> {leaveTypeName}
+                </Text>
+                <Text>
+                  <strong>Period:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                </Text>
+                <Text size="sm" c="dimmed">
+                  <strong>Current Status:</strong> {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1)}
+                </Text>
+                <Select
+                  label="New Status"
+                  placeholder="Select status"
+                  required
+                  data={[
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'rejected', label: 'Rejected' },
+                    { value: 'cancelled', label: 'Cancelled' },
+                  ]}
+                  {...changeStatusForm.getInputProps('status')}
+                />
+                {changeStatusForm.values.status === 'rejected' && (
+                  <TextInput
+                    label="Rejection Reason"
+                    placeholder="Optional"
+                    {...changeStatusForm.getInputProps('rejection_reason')}
+                  />
+                )}
+                <Text size="sm" c="dimmed">
+                  Note: Changing status will automatically update leave balances. If approving, schedule exceptions will be created.
+                </Text>
+                <Group justify="flex-end">
+                  <Button variant="default" onClick={() => setChangeStatusOpen(false)}>Cancel</Button>
+                  <Button type="submit">Update Status</Button>
+                </Group>
+              </>
+              )
+            })()}
           </Stack>
         </form>
       </Modal>
