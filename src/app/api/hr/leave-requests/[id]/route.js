@@ -159,32 +159,49 @@ export async function PATCH(req, { params } = {}) {
         .eq('employee_id', currentRequest.employee_id)
         .eq('leave_type_id', currentRequest.leave_type_id)
         .eq('year', currentYear)
-        .single()
+        .maybeSingle()
 
-      if (!balanceError && balance) {
-        let newPending = balance.pending || 0
-        let newUsed = balance.used || 0
+      let newPending = 0
+      let newUsed = 0
+      let totalAllotted = 0
 
-        // Remove from pending if was pending
-        if (oldStatus === 'pending') {
-          newPending = Math.max(0, newPending - currentRequest.total_days)
-        }
+      if (balance) {
+        newPending = balance.pending || 0
+        newUsed = balance.used || 0
+        totalAllotted = balance.total_allotted || 0
+      } else {
+        // Balance doesn't exist, get default from leave type
+        const { data: leaveType } = await supabase
+          .from('leave_types')
+          .select('max_days_per_year')
+          .eq('id', currentRequest.leave_type_id)
+          .single()
+        
+        totalAllotted = leaveType?.max_days_per_year || 0
+      }
 
-        // Add to used if approved
-        if (status === 'approved') {
-          newUsed = (newUsed || 0) + currentRequest.total_days
-        }
+      // Remove from pending if was pending
+      if (oldStatus === 'pending') {
+        newPending = Math.max(0, newPending - currentRequest.total_days)
+      }
 
-        // If was approved and now rejected/cancelled, remove from used
-        if (oldStatus === 'approved' && (status === 'rejected' || status === 'cancelled')) {
-          newUsed = Math.max(0, newUsed - currentRequest.total_days)
-        }
+      // Add to used if approved
+      if (status === 'approved') {
+        newUsed = (newUsed || 0) + currentRequest.total_days
+      }
 
-        // If was pending and now cancelled/rejected, it's already removed from pending above
-        if (oldStatus === 'pending' && (status === 'rejected' || status === 'cancelled')) {
-          // Already handled above
-        }
+      // If was approved and now rejected/cancelled, remove from used
+      if (oldStatus === 'approved' && (status === 'rejected' || status === 'cancelled')) {
+        newUsed = Math.max(0, newUsed - currentRequest.total_days)
+      }
 
+      // If was pending and now cancelled/rejected, it's already removed from pending above
+      if (oldStatus === 'pending' && (status === 'rejected' || status === 'cancelled')) {
+        // Already handled above
+      }
+
+      // Update or create balance record
+      if (balance) {
         await supabase
           .from('leave_balances')
           .update({
@@ -192,6 +209,18 @@ export async function PATCH(req, { params } = {}) {
             used: newUsed,
           })
           .eq('id', balance.id)
+      } else {
+        // Create new balance record
+        await supabase
+          .from('leave_balances')
+          .insert({
+            employee_id: currentRequest.employee_id,
+            leave_type_id: currentRequest.leave_type_id,
+            year: currentYear,
+            total_allotted: totalAllotted,
+            used: newUsed,
+            pending: newPending,
+          })
       }
     }
 

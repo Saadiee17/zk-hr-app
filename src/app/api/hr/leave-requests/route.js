@@ -144,6 +144,52 @@ export async function POST(req) {
       throw error
     }
     
+    // Update leave balance - add to pending if status is pending
+    if (data.status === 'pending') {
+      const currentYear = new Date().getFullYear()
+      
+      // Check if balance exists
+      const { data: existingBalance, error: balanceCheckError } = await supabase
+        .from('leave_balances')
+        .select('*')
+        .eq('employee_id', employee_id)
+        .eq('leave_type_id', finalLeaveTypeId)
+        .eq('year', currentYear)
+        .maybeSingle()
+
+      if (balanceCheckError && balanceCheckError.code !== 'PGRST116') {
+        console.error('[leave-requests] Error checking balance:', balanceCheckError)
+      } else if (existingBalance) {
+        // Update existing balance - add to pending
+        const newPending = (existingBalance.pending || 0) + totalDays
+        await supabase
+          .from('leave_balances')
+          .update({ pending: newPending })
+          .eq('id', existingBalance.id)
+      } else {
+        // Create new balance record with pending days
+        // First, get default total_allotted from leave type
+        const { data: leaveType } = await supabase
+          .from('leave_types')
+          .select('max_days_per_year')
+          .eq('id', finalLeaveTypeId)
+          .single()
+
+        const totalAllotted = leaveType?.max_days_per_year || 0
+
+        await supabase
+          .from('leave_balances')
+          .insert({
+            employee_id,
+            leave_type_id: finalLeaveTypeId,
+            year: currentYear,
+            total_allotted: totalAllotted,
+            used: 0,
+            pending: totalDays,
+          })
+      }
+    }
+    
     console.log('[leave-requests] Successfully created:', data)
     return NextResponse.json({ success: true, data })
   } catch (error) {
