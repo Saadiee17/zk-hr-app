@@ -79,11 +79,28 @@ export default function EmployeeProfilePage() {
     try {
       setSaving(true)
 
+      // Convert birthday to YYYY-MM-DD format
+      let birthdayStr = null
+      if (birthday) {
+        if (birthday instanceof Date) {
+          birthdayStr = birthday.toISOString().slice(0, 10)
+        } else if (typeof birthday === 'string') {
+          // If it's already a string in YYYY-MM-DD format, use it directly
+          birthdayStr = birthday.length === 10 ? birthday : new Date(birthday).toISOString().slice(0, 10)
+        } else {
+          // Try to convert to Date
+          const date = new Date(birthday)
+          if (!isNaN(date.getTime())) {
+            birthdayStr = date.toISOString().slice(0, 10)
+          }
+        }
+      }
+
       const updates = {
         phone,
         email,
         address,
-        birthday: birthday ? birthday.toISOString().slice(0, 10) : null,
+        birthday: birthdayStr,
       }
 
       const res = await fetch('/api/employee/profile', {
