@@ -212,7 +212,7 @@ export default function EmployeeDashboardPage() {
               <Stack gap="xs">
                 {stats.leaveBalance.length > 0 ? (
                   stats.leaveBalance.map((balance) => (
-                    <Group key={balance.id} justify="space-between">
+                    <Group key={balance.id || `default-${balance.leave_type_id}`} justify="space-between">
                       <Text size="sm">{balance.leave_type?.name}</Text>
                       <Badge variant="light" color="blue">
                         {balance.remaining || 0} days

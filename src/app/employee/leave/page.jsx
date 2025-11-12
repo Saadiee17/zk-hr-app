@@ -247,7 +247,7 @@ export default function EmployeeLeavePage() {
             <Grid>
               {leaveBalances.length > 0 ? (
                 leaveBalances.map((balance) => (
-                  <Grid.Col key={balance.id} span={{ base: 12, sm: 6, md: 4 }}>
+                  <Grid.Col key={balance.id || `default-${balance.leave_type_id}`} span={{ base: 12, sm: 6, md: 4 }}>
                     <Card shadow="sm" padding="lg" radius="md" withBorder>
                       <Text size="lg" fw={600} mb="md">
                         {balance.leave_type?.name}

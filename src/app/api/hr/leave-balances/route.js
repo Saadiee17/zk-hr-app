@@ -49,6 +49,39 @@ export async function GET(req) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // If employee_id is specified and no balances found, return defaults from active leave types
+    if (employeeId && (!data || data.length === 0)) {
+      // Fetch active leave types to get default max_days_per_year
+      const { data: leaveTypes, error: typesError } = await supabase
+        .from('leave_types')
+        .select('id, name, code, max_days_per_year')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+      if (!typesError && leaveTypes && leaveTypes.length > 0) {
+        // Create default balance entries based on max_days_per_year
+        const defaultBalances = leaveTypes
+          .filter(lt => lt.max_days_per_year !== null && lt.max_days_per_year > 0)
+          .map(lt => ({
+            id: null, // No actual record yet
+            employee_id: employeeId,
+            leave_type_id: lt.id,
+            total_allotted: lt.max_days_per_year,
+            used: 0,
+            pending: 0,
+            remaining: lt.max_days_per_year,
+            year: parseInt(year),
+            leave_type: {
+              id: lt.id,
+              name: lt.name,
+              code: lt.code
+            }
+          }))
+
+        return NextResponse.json({ success: true, data: defaultBalances })
+      }
+    }
+
     return NextResponse.json({ success: true, data: data || [] })
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unexpected error' }, { status: 500 })
