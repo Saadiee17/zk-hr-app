@@ -16,6 +16,7 @@ import {
   LoadingOverlay,
   ActionIcon,
   Divider,
+  Progress,
 } from '@mantine/core'
 import {
   IconCalendar,
@@ -200,65 +201,200 @@ export default function EmployeeDashboardPage() {
         </Group>
 
         {/* Stats Cards */}
-        <Grid>
+        <Grid gutter="md">
+          {/* Leave Balance Card */}
           <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" mb="md">
-                <Text size="sm" fw={500} c="dimmed">
-                  Leave Balance
-                </Text>
-                <IconCalendar size={20} color="var(--mantine-color-blue-6)" />
-              </Group>
-              <Stack gap="xs">
-                {stats.leaveBalance.length > 0 ? (
-                  stats.leaveBalance.map((balance) => (
-                    <Group key={balance.id || `default-${balance.leave_type_id}`} justify="space-between">
-                      <Text size="sm">{balance.leave_type?.name}</Text>
-                      <Badge variant="light" color="blue">
-                        {balance.remaining || 0} days
-                      </Badge>
-                    </Group>
-                  ))
-                ) : (
-                  <Text size="sm" c="dimmed">
-                    No leave balance data
-                  </Text>
-                )}
+            <Card 
+              shadow="sm" 
+              padding="xl" 
+              radius="lg" 
+              withBorder
+              style={{ 
+                height: '100%',
+                transition: 'all 0.3s ease',
+                borderLeft: '4px solid var(--mantine-color-blue-6)',
+                background: 'linear-gradient(135deg, var(--mantine-color-blue-0) 0%, var(--mantine-color-white) 100%)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 12px 24px rgba(37, 99, 235, 0.15)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
+                      Leave Balance
+                    </Text>
+                    <Text size="lg" fw={700} c="blue">
+                      {stats.leaveBalance.length} Types
+                    </Text>
+                  </div>
+                  <div style={{
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'var(--mantine-color-blue-1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <IconCalendar size={24} color="var(--mantine-color-blue-6)" />
+                  </div>
+                </Group>
+                <Divider />
+                <Stack gap={8}>
+                  {stats.leaveBalance.length > 0 ? (
+                    stats.leaveBalance.slice(0, 3).map((balance) => (
+                      <Group key={balance.id || `default-${balance.leave_type_id}`} justify="space-between" p="xs" style={{ borderRadius: '8px', background: 'var(--mantine-color-gray-0)' }}>
+                        <Text size="sm" fw={500}>{balance.leave_type?.name}</Text>
+                        <Badge 
+                          variant="light" 
+                          color="blue" 
+                          size="lg"
+                          radius="md"
+                          style={{ fontWeight: 600 }}
+                        >
+                          {balance.remaining || 0} days
+                        </Badge>
+                      </Group>
+                    ))
+                  ) : (
+                    <Text size="sm" c="dimmed" ta="center" py="md">
+                      No leave balance data
+                    </Text>
+                  )}
+                  {stats.leaveBalance.length > 3 && (
+                    <Text size="xs" c="dimmed" ta="center" mt={4}>
+                      +{stats.leaveBalance.length - 3} more
+                    </Text>
+                  )}
+                </Stack>
               </Stack>
             </Card>
           </Grid.Col>
 
+          {/* Pending Requests Card */}
           <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" mb="md">
-                <Text size="sm" fw={500} c="dimmed">
-                  Pending Requests
+            <Card 
+              shadow="sm" 
+              padding="xl" 
+              radius="lg" 
+              withBorder
+              style={{ 
+                height: '100%',
+                transition: 'all 0.3s ease',
+                borderLeft: '4px solid var(--mantine-color-yellow-6)',
+                background: 'linear-gradient(135deg, var(--mantine-color-yellow-0) 0%, var(--mantine-color-white) 100%)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 12px 24px rgba(234, 179, 8, 0.15)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
+                      Pending Requests
+                    </Text>
+                    <Text size={36} fw={700} c="yellow" lh={1}>
+                      {stats.pendingRequests}
+                    </Text>
+                  </div>
+                  <div style={{
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'var(--mantine-color-yellow-1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <IconAlertCircle size={24} color="var(--mantine-color-yellow-6)" />
+                  </div>
+                </Group>
+                <Divider />
+                <Text size="sm" c="dimmed" fw={500}>
+                  Awaiting approval
                 </Text>
-                <IconAlertCircle size={20} color="var(--mantine-color-yellow-6)" />
-              </Group>
-              <Text size="xl" fw={700}>
-                {stats.pendingRequests}
-              </Text>
-              <Text size="xs" c="dimmed" mt="xs">
-                Awaiting approval
-              </Text>
+              </Stack>
             </Card>
           </Grid.Col>
 
+          {/* This Month's Hours Card */}
           <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" mb="md">
-                <Text size="sm" fw={500} c="dimmed">
-                  This Month's Hours
-                </Text>
-                <IconClock size={20} color="var(--mantine-color-green-6)" />
-              </Group>
-              <Text size="xl" fw={700}>
-                {formatHoursMinutes(stats.monthWorkHours)}
-              </Text>
-              <Text size="xs" c="dimmed" mt="xs">
-                {formatHoursMinutes(stats.monthWorkHours)} / {formatHoursMinutes(stats.monthRequiredHours)} required
-              </Text>
+            <Card 
+              shadow="sm" 
+              padding="xl" 
+              radius="lg" 
+              withBorder
+              style={{ 
+                height: '100%',
+                transition: 'all 0.3s ease',
+                borderLeft: '4px solid var(--mantine-color-green-6)',
+                background: 'linear-gradient(135deg, var(--mantine-color-green-0) 0%, var(--mantine-color-white) 100%)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 12px 24px rgba(34, 197, 94, 0.15)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = ''
+              }}
+            >
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <div style={{ flex: 1 }}>
+                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
+                      This Month's Hours
+                    </Text>
+                    <Text size={32} fw={700} c="green" lh={1.2}>
+                      {formatHoursMinutes(stats.monthWorkHours)}
+                    </Text>
+                  </div>
+                  <div style={{
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'var(--mantine-color-green-1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <IconClock size={24} color="var(--mantine-color-green-6)" />
+                  </div>
+                </Group>
+                <Divider />
+                <div>
+                  <Group justify="space-between" mb={8}>
+                    <Text size="sm" c="dimmed" fw={500}>
+                      Progress
+                    </Text>
+                    <Text size="sm" fw={600} c="green">
+                      {stats.monthRequiredHours > 0 
+                        ? Math.round((stats.monthWorkHours / stats.monthRequiredHours) * 100) 
+                        : 0}%
+                    </Text>
+                  </Group>
+                  <Progress 
+                    value={stats.monthRequiredHours > 0 ? (stats.monthWorkHours / stats.monthRequiredHours) * 100 : 0} 
+                    color="green" 
+                    size="lg" 
+                    radius="xl"
+                    animated
+                  />
+                  <Text size="xs" c="dimmed" mt={8}>
+                    {formatHoursMinutes(stats.monthWorkHours)} / {formatHoursMinutes(stats.monthRequiredHours)} required
+                  </Text>
+                </div>
+              </Stack>
             </Card>
           </Grid.Col>
         </Grid>

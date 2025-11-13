@@ -49,9 +49,9 @@ export async function GET(req) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // If employee_id is specified and no balances found, return defaults from active leave types
-    if (employeeId && (!data || data.length === 0)) {
-      // Fetch active leave types to get default max_days_per_year
+    // If employee_id is specified, merge existing balances with defaults for missing leave types
+    if (employeeId) {
+      // Fetch all active leave types
       const { data: leaveTypes, error: typesError } = await supabase
         .from('leave_types')
         .select('id, name, code, max_days_per_year')
@@ -59,17 +59,20 @@ export async function GET(req) {
         .order('name', { ascending: true })
 
       if (!typesError && leaveTypes && leaveTypes.length > 0) {
-        // Create default balance entries based on max_days_per_year
+        // Get existing balance leave type IDs
+        const existingLeaveTypeIds = new Set((data || []).map(b => b.leave_type_id))
+        
+        // Create default balance entries for leave types that don't have balances
         const defaultBalances = leaveTypes
-          .filter(lt => lt.max_days_per_year !== null && lt.max_days_per_year > 0)
+          .filter(lt => !existingLeaveTypeIds.has(lt.id))
           .map(lt => ({
             id: null, // No actual record yet
             employee_id: employeeId,
             leave_type_id: lt.id,
-            total_allotted: lt.max_days_per_year,
+            total_allotted: lt.max_days_per_year || 0,
             used: 0,
             pending: 0,
-            remaining: lt.max_days_per_year,
+            remaining: lt.max_days_per_year || 0,
             year: parseInt(year),
             leave_type: {
               id: lt.id,
@@ -78,7 +81,9 @@ export async function GET(req) {
             }
           }))
 
-        return NextResponse.json({ success: true, data: defaultBalances })
+        // Merge existing balances with defaults
+        const allBalances = [...(data || []), ...defaultBalances]
+        return NextResponse.json({ success: true, data: allBalances })
       }
     }
 

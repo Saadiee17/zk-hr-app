@@ -1,6 +1,6 @@
 'use client'
 
-import { NavLink, Group, Text, Button, Stack, Badge, Box } from '@mantine/core'
+import { NavLink, Group, Text, Button, Stack, Badge, Box, ActionIcon, Tooltip, useMantineColorScheme } from '@mantine/core'
 import { 
   IconHome, 
   IconUser, 
@@ -8,7 +8,9 @@ import {
   IconReport,
   IconDownload,
   IconLogout,
-  IconSettings
+  IconSettings,
+  IconMoon,
+  IconSun
 } from '@tabler/icons-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -18,6 +20,7 @@ export function EmployeeNavbar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
+  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
 
   const handleLogout = async () => {
     await logout()
@@ -106,15 +109,30 @@ export function EmployeeNavbar() {
         </Stack>
       </Box>
 
-      <Button
-        fullWidth
-        variant="light"
-        color="red"
-        leftSection={<IconLogout size={18} />}
-        onClick={handleLogout}
-      >
-        Logout
-      </Button>
+      <Stack gap="xs">
+        <Group justify="center" mb="xs">
+          <Tooltip label={colorScheme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'} position="right" withArrow>
+            <ActionIcon
+              variant="light"
+              size="lg"
+              onClick={toggleColorScheme}
+              aria-label="Toggle color scheme"
+            >
+              {colorScheme === 'light' ? <IconMoon size={20} /> : <IconSun size={20} />}
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+
+        <Button
+          fullWidth
+          variant="light"
+          color="red"
+          leftSection={<IconLogout size={18} />}
+          onClick={handleLogout}
+        >
+          Logout
+        </Button>
+      </Stack>
     </Stack>
   )
 }
