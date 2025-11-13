@@ -32,6 +32,7 @@ import { AppShellWrapper } from '@/components/AppShellWrapper'
 function Dashboard() {
   // State for logs table
   const [logs, setLogs] = useState([])
+  const [allLogs, setAllLogs] = useState([]) // Store all logs for search filtering
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [logsPerPage] = useState(50)
@@ -66,18 +67,63 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState('status')
 
   // Fetch attendance logs with pagination
-  const fetchLogs = async (page = 1, limit = 50) => {
+  const fetchLogs = async (page = 1, limit = 50, fetchAll = false) => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/logs/filter?page=${page}&limit=${limit}`)
-      const result = await response.json()
+      
+      if (fetchAll) {
+        // When searching, fetch multiple pages to get all logs
+        // Fetch first 20 pages (1000 logs) which should cover most cases
+        const maxPagesToFetch = 20
+        const allFetchedLogs = []
+        
+        // Fetch first page to get total count
+        const firstResponse = await fetch(`/api/logs/filter?page=1&limit=${limit}`)
+        const firstResult = await firstResponse.json()
+        
+        if (!firstResponse.ok) {
+          throw new Error(firstResult.error || 'Failed to fetch logs')
+        }
+        
+        allFetchedLogs.push(...(firstResult.data || []))
+        const totalPagesFromAPI = firstResult.totalPages || 1
+        const pagesToFetch = Math.min(maxPagesToFetch, totalPagesFromAPI)
+        
+        // Fetch remaining pages in parallel
+        if (pagesToFetch > 1) {
+          const fetchPromises = []
+          for (let p = 2; p <= pagesToFetch; p++) {
+            fetchPromises.push(
+              fetch(`/api/logs/filter?page=${p}&limit=${limit}`)
+                .then(res => res.json())
+                .then(result => result.data || [])
+            )
+          }
+          
+          const additionalLogs = await Promise.all(fetchPromises)
+          additionalLogs.forEach(pageLogs => {
+            allFetchedLogs.push(...pageLogs)
+          })
+        }
+        
+        // Store all logs for search filtering
+        setAllLogs(allFetchedLogs)
+        setLogs(allFetchedLogs)
+        setTotalPages(totalPagesFromAPI)
+      } else {
+        // Normal pagination mode
+        const response = await fetch(`/api/logs/filter?page=${page}&limit=${limit}`)
+        const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch logs')
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to fetch logs')
+        }
+
+        const fetchedLogs = result.data || []
+        setLogs(fetchedLogs)
+        setAllLogs([]) // Clear allLogs when not searching
+        setTotalPages(result.totalPages || 1)
       }
-
-      setLogs(result.data || [])
-      setTotalPages(result.totalPages || 1)
     } catch (error) {
       console.error('[Logs] Error:', error)
       notifications.show({
@@ -134,7 +180,12 @@ function Dashboard() {
       }
 
       // Refresh logs after successful sync
-      await fetchLogs(currentPage, logsPerPage)
+      // If searching, refresh all logs; otherwise refresh current page
+      if (logsSearchQuery.trim() && allLogs.length > 0) {
+        await fetchLogs(1, logsPerPage, true)
+      } else {
+        await fetchLogs(currentPage, logsPerPage, false)
+      }
       await fetchMetrics()
     } catch (error) {
       console.error('[Sync] Error:', error)
@@ -152,7 +203,7 @@ function Dashboard() {
       setSyncing(false)
       syncingRef.current = false
     }
-  }, [currentPage, logsPerPage])
+  }, [currentPage, logsPerPage, logsSearchQuery, allLogs.length])
 
   // Fetch dashboard metrics using API (single source of truth!)
   const fetchMetrics = useCallback(async (background = false) => {
@@ -431,6 +482,26 @@ function Dashboard() {
     fetchMetrics()
   }, [fetchMetrics])
 
+  // Fetch all logs when search query is entered
+  useEffect(() => {
+    const searchTimeout = setTimeout(() => {
+      if (logsSearchQuery.trim()) {
+        // When searching, fetch all logs
+        fetchLogs(1, 50, true)
+        setCurrentPage(1) // Reset to first page
+      } else {
+        // When search is cleared, go back to normal pagination
+        if (allLogs.length > 0) {
+          setAllLogs([])
+          fetchLogs(1, 50, false)
+          setCurrentPage(1)
+        }
+      }
+    }, 300) // Debounce search to avoid too many requests
+
+    return () => clearTimeout(searchTimeout)
+  }, [logsSearchQuery])
+
   // Expand all departments by default when data loads
   useEffect(() => {
     if (departmentEmployees.length > 0 && Object.keys(expandedDepartments).length === 0) {
@@ -480,7 +551,9 @@ function Dashboard() {
   }
 
   // Filter logs based on search query
-  const filteredLogs = logs.filter((log) => {
+  // Use allLogs if available (when searching), otherwise use logs (normal pagination)
+  const logsToFilter = allLogs.length > 0 ? allLogs : logs
+  const filteredLogs = logsToFilter.filter((log) => {
     if (!logsSearchQuery.trim()) return true
     
     const query = logsSearchQuery.toLowerCase()
@@ -504,8 +577,14 @@ function Dashboard() {
     )
   })
 
+  // Client-side pagination for filtered results
+  const filteredTotalPages = Math.max(1, Math.ceil(filteredLogs.length / logsPerPage))
+  const paginatedFilteredLogs = logsSearchQuery.trim() 
+    ? filteredLogs.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage)
+    : filteredLogs
+
   // Table rows for logs
-  const rows = filteredLogs.map((log) => {
+  const rows = paginatedFilteredLogs.map((log) => {
     const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
     const employeeId = employee?.id
     const employeeName = getEmployeeName(log.employees)
@@ -527,7 +606,6 @@ function Dashboard() {
       <Table.Td>{coalesce(log.department_name)}</Table.Td>
       <Table.Td>{formatDateTime(log.log_time)}</Table.Td>
       <Table.Td>{coalesce(log.punch_text)}</Table.Td>
-      <Table.Td>{coalesce(log.status_text)}</Table.Td>
       <Table.Td>{formatDateTime(log.synced_at)}</Table.Td>
     </Table.Tr>
     )
@@ -1135,14 +1213,13 @@ function Dashboard() {
                       <Table.Th>Department</Table.Th>
                       <Table.Th>Log Time</Table.Th>
                       <Table.Th>Punch Status</Table.Th>
-                      <Table.Th>Status</Table.Th>
                       <Table.Th>Synced At</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {rows.length === 0 ? (
                       <Table.Tr>
-                        <Table.Td colSpan={7}>
+                        <Table.Td colSpan={6}>
                           <Text c="dimmed" ta="center" py="md">
                             {logsSearchQuery ? 'No logs match your search' : 'No logs available'}
                           </Text>
@@ -1157,11 +1234,14 @@ function Dashboard() {
                 {/* Pagination */}
                 <Group justify="center" mt="xl">
                   <Pagination 
-                    total={totalPages} 
+                    total={logsSearchQuery.trim() ? filteredTotalPages : totalPages} 
                     value={currentPage} 
                     onChange={(p) => {
                       setCurrentPage(p)
-                      fetchLogs(p, logsPerPage)
+                      // Only fetch from server if not searching (client-side pagination when searching)
+                      if (!logsSearchQuery.trim()) {
+                        fetchLogs(p, logsPerPage, false)
+                      }
                     }} 
                   />
                 </Group>

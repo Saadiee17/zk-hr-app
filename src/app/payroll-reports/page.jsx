@@ -1,13 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Container, Title, Paper, Text, Button, Group, Table, Stack, Select, Alert, ActionIcon, Collapse, Badge } from '@mantine/core'
+import { Container, Title, Paper, Text, Button, Group, Table, Stack, Select, Alert, ActionIcon, Collapse, Badge, Tabs } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCheck, IconX, IconInfoCircle, IconChevronDown } from '@tabler/icons-react'
 import { DatePickerInput } from '@mantine/dates'
 import { formatUTC12Hour } from '@/utils/dateFormatting'
+import { useRouter, usePathname } from 'next/navigation'
 
 export default function PayrollReportsPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const [activeTab, setActiveTab] = useState(() => {
+    return pathname === '/payroll-reports/attendance-outlier' ? 'attendance-outlier' : 'payroll-summary'
+  })
+  
   const [payrollRange, setPayrollRange] = useState(() => {
     const end = new Date()
     const start = new Date()
@@ -31,6 +38,15 @@ export default function PayrollReportsPage() {
       })
       .catch(() => setEmployees([]))
   }, [])
+
+  useEffect(() => {
+    // Sync tab state with pathname
+    if (pathname === '/payroll-reports/attendance-outlier') {
+      setActiveTab('attendance-outlier')
+    } else {
+      setActiveTab('payroll-summary')
+    }
+  }, [pathname])
 
   const generatePayroll = async () => {
     try {
@@ -64,12 +80,28 @@ export default function PayrollReportsPage() {
     }
   }
 
+  const handleTabChange = (value) => {
+    setActiveTab(value)
+    if (value === 'attendance-outlier') {
+      router.push('/payroll-reports/attendance-outlier')
+    } else {
+      router.push('/payroll-reports')
+    }
+  }
+
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
       <Title order={1} mb="md">Payroll Reports</Title>
 
-      <Paper withBorder shadow="sm" p="md">
-        <Stack gap="md">
+      <Tabs value={activeTab} onChange={handleTabChange}>
+        <Tabs.List>
+          <Tabs.Tab value="payroll-summary">Payroll Summary</Tabs.Tab>
+          <Tabs.Tab value="attendance-outlier">Attendance Outlier</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="payroll-summary" pt="md">
+          <Paper withBorder shadow="sm" p="md">
+            <Stack gap="md">
           <Group align="end" wrap="wrap" gap="md">
             <DatePickerInput
               type="range"
@@ -247,9 +279,20 @@ export default function PayrollReportsPage() {
           </Paper>
         </Stack>
       </Paper>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="attendance-outlier" pt="md">
+          <Paper withBorder shadow="sm" p="md">
+            <Text c="dimmed" ta="center" py="xl">
+              Redirecting to Attendance Outlier Report...
+            </Text>
+          </Paper>
+        </Tabs.Panel>
+      </Tabs>
     </Container>
   )
 }
+
 
 
 
