@@ -47,6 +47,8 @@ export default function AttendanceOutlierPage() {
   const [expandedEmployees, setExpandedEmployees] = useState(new Set())
   const [employeeLateDetails, setEmployeeLateDetails] = useState(new Map())
   const [expandedDays, setExpandedDays] = useState(new Set())
+  // Store all employee reports data to avoid re-fetching
+  const [allEmployeeReports, setAllEmployeeReports] = useState(new Map())
 
   // Convert month to date range
   const getMonthDateRange = (monthDate) => {
@@ -85,9 +87,12 @@ export default function AttendanceOutlierPage() {
         dates.push(d.toISOString().slice(0, 10))
       }
 
-      console.log(`[Outlier] Fetching data for ${dates.length} dates using batch endpoint (cached)`)
+      console.log(`[Outlier] Fetching data for ${dates.length} dates using batch endpoint (cached, returns immediately)`)
+      const fetchStartTime = Date.now()
 
-      // Fetch data for all dates using batch endpoint (much faster with cache!)
+      // Fetch data for all dates using batch endpoint (optimized: returns cached data immediately!)
+      // With the batch endpoint optimization, each request returns instantly with cached data
+      // Missing calculations happen in background and don't block the response
       const datePromises = dates.map(async (dateStr) => {
         try {
           const batchRes = await fetch(`/api/reports/daily-work-time/batch?date=${dateStr}`)
@@ -95,6 +100,10 @@ export default function AttendanceOutlierPage() {
           if (!batchRes.ok) {
             console.warn(`[Outlier] Failed to fetch batch for ${dateStr}:`, batchJson.error)
             return { date: dateStr, data: [] }
+          }
+          // Log cache hit info if available
+          if (batchJson.cached !== undefined) {
+            console.log(`[Outlier] Date ${dateStr}: ${batchJson.cached} cached, ${batchJson.missing || 0} missing (calculated in background)`)
           }
           return { date: dateStr, data: batchJson.data || [] }
         } catch (error) {
@@ -104,7 +113,8 @@ export default function AttendanceOutlierPage() {
       })
 
       const dateResults = await Promise.all(datePromises)
-      console.log(`[Outlier] Fetched data for ${dateResults.length} dates`)
+      const fetchEndTime = Date.now()
+      console.log(`[Outlier] Fetched data for ${dateResults.length} dates in ${fetchEndTime - fetchStartTime}ms`)
 
       // Build a map of employee_id -> array of daily reports
       const employeeReportsMap = new Map()
@@ -121,6 +131,9 @@ export default function AttendanceOutlierPage() {
           })
         })
       })
+
+      // Store all reports for reuse (avoid re-fetching when expanding employee details)
+      setAllEmployeeReports(employeeReportsMap)
 
       // Process each employee's reports
       const results = []
@@ -176,6 +189,20 @@ export default function AttendanceOutlierPage() {
       return // Already fetched
     }
 
+    // OPTIMIZATION: Reuse data already fetched instead of making another API call!
+    const employeeReports = allEmployeeReports.get(employeeId) || []
+    if (employeeReports.length > 0) {
+      // We already have the data from the initial fetch - use it!
+      const lateDays = employeeReports.filter(day => day.status === 'Late-In')
+      setEmployeeLateDetails(prev => {
+        const newMap = new Map(prev)
+        newMap.set(employeeId, lateDays)
+        return newMap
+      })
+      return
+    }
+
+    // Fallback: Only fetch if data not available (shouldn't happen normally)
     try {
       const { start, end } = getMonthDateRange(selectedMonth)
       const qs = new URLSearchParams({

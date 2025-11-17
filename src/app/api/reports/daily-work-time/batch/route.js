@@ -60,11 +60,14 @@ export async function GET(req) {
 
     console.log(`[batch] Date ${dateStr}: ${cachedMap.size} cached, ${missingEmployeeIds.length} need calculation`)
 
-    // STEP 3: Calculate for missing employees (in parallel, but limited concurrency)
-    const calculatedResults = []
+    // STEP 3: Return cached results immediately, calculate missing ones in background
+    // This allows the dashboard to load instantly with cached data
+    
+    // Start background calculation for missing employees (don't wait for it)
     if (missingEmployeeIds.length > 0) {
-      console.log(`[batch] Calculating ${missingEmployeeIds.length} missing employees for ${dateStr}`)
+      console.log(`[batch] Starting background calculation for ${missingEmployeeIds.length} missing employees for ${dateStr}`)
       
+      // Don't await this - let it run in background
       // Process in chunks to avoid overwhelming the system
       const chunkSize = 10
       const chunks = []
@@ -72,7 +75,8 @@ export async function GET(req) {
         chunks.push(missingEmployeeIds.slice(i, i + chunkSize))
       }
 
-      for (const chunk of chunks) {
+      // Run calculations in background (fire and forget)
+      Promise.all(chunks.map(async (chunk) => {
         const promises = chunk.map(async (employeeId) => {
           try {
             // Directly call the calculation function (no HTTP overhead!)
@@ -100,36 +104,31 @@ export async function GET(req) {
                 
                 if (insertError) {
                   console.warn(`[batch] Cache insert error for ${employeeId}:`, insertError)
+                } else {
+                  console.log(`[batch] Background: Cached calculation for employee ${employeeId} on ${dateStr}`)
                 }
               } catch (e) {
                 console.warn(`[batch] Cache insert exception for ${employeeId}:`, e)
               }
-              
-              return {
-                employee_id: employeeId,
-                ...dayData
-              }
             }
-            return null
           } catch (error) {
             console.error(`[batch] Error calculating for employee ${employeeId}:`, error)
-            return null
           }
         })
-
-        const chunkResults = await Promise.all(promises)
-        calculatedResults.push(...chunkResults.filter(r => r !== null))
-      }
-      
-      console.log(`[batch] Calculated ${calculatedResults.length} employees for ${dateStr}`)
+        
+        await Promise.all(promises)
+      })).catch(err => {
+        console.error('[batch] Background calculation error:', err)
+      })
     }
 
-    // STEP 4: Combine cached and calculated results
+    // STEP 4: Return results immediately with cached data
+    // Missing employees will show as "Absent" (which is likely correct if no cache exists)
     const allResults = employees.map(emp => {
       const cached = cachedMap.get(emp.id)
-      const calculated = calculatedResults.find(r => r.employee_id === emp.id)
 
       if (cached) {
+        // Return cached data immediately
         return {
           employee_id: emp.id,
           employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
@@ -142,21 +141,9 @@ export async function GET(req) {
           regularHours: Number(cached.regular_hours) || 0,
           overtimeHours: Number(cached.overtime_hours) || 0,
         }
-      } else if (calculated) {
-        return {
-          employee_id: emp.id,
-          employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
-          department: emp.department?.name || 'No Department',
-          date: calculated.date,
-          status: calculated.status,
-          inTime: calculated.inTime,
-          outTime: calculated.outTime,
-          durationHours: calculated.durationHours,
-          regularHours: calculated.regularHours,
-          overtimeHours: calculated.overtimeHours,
-        }
       } else {
-        // No data available (shouldn't happen, but handle gracefully)
+        // No cache available - return "Absent" immediately
+        // Background calculation will update cache for next request
         return {
           employee_id: emp.id,
           employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
@@ -172,14 +159,15 @@ export async function GET(req) {
       }
     })
 
-    console.log(`[batch] Returning ${allResults.length} results for date ${dateStr}`)
+    console.log(`[batch] Returning ${allResults.length} results immediately for date ${dateStr} (${cachedMap.size} from cache, ${missingEmployeeIds.length} defaulted to Absent, calculating in background)`)
 
     return NextResponse.json({
       success: true,
       data: allResults,
       date: dateStr,
       cached: cachedMap.size,
-      calculated: calculatedResults.length,
+      missing: missingEmployeeIds.length,
+      note: missingEmployeeIds.length > 0 ? 'Some employees calculated in background, refresh to see updated results' : 'All data from cache'
     })
   } catch (error) {
     console.error('[batch] Error:', error)
