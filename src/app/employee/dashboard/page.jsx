@@ -31,16 +31,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { formatUTC12Hour, formatUTC12HourTime } from '@/utils/dateFormatting'
 import { AdminAccessBanner } from '@/components/AdminAccessBanner'
 
-// Helper function to convert decimal hours to "Xh Ym" format
-const formatHoursMinutes = (decimalHours) => {
-  if (!decimalHours || decimalHours === 0) return '0h'
-  const hours = Math.floor(decimalHours)
-  const minutes = Math.round((decimalHours - hours) * 60)
-  if (minutes === 0) {
-    return `${hours}h`
-  }
-  return `${hours}h ${minutes}m`
-}
+import { formatHoursMinutes, formatDateWithDay } from '@/utils/attendanceUtils'
+import { StatusBadge } from '@/components/shared/StatusBadge'
 
 // Calculate working days from start of month up to current date (excluding weekends)
 const getWorkingDaysInMonth = (year, month, currentDate) => {
@@ -154,19 +146,6 @@ export default function EmployeeDashboardPage() {
     setExpandedRows(newExpanded)
   }
 
-  const formatDateWithDay = (dateStr) => {
-    if (!dateStr) return { dayName: '', dateStr: '' }
-    const date = new Date(dateStr + 'T00:00:00')
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const dayName = dayNames[date.getDay()]
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const year = date.getFullYear()
-    return {
-      dayName,
-      dateStr: `${month}/${day}/${year}`,
-    }
-  }
 
   return (
     <Container size="xl" py="xl">
@@ -465,21 +444,7 @@ export default function EmployeeDashboardPage() {
                         <Table.Td>{formatHoursMinutes(log.overtimeHours ?? 0)}</Table.Td>
                         <Table.Td>{formatHoursMinutes((log.regularHours ?? 0) + (log.overtimeHours ?? 0))}</Table.Td>
                         <Table.Td>
-                          <Badge
-                            color={
-                              log.status === 'On-Time' ? 'green' :
-                              log.status === 'Late-In' ? 'orange' :
-                              log.status === 'Present' ? 'blue' :
-                              log.status === 'On Leave' ? 'violet' :
-                              log.status === 'Half Day' ? 'yellow' :
-                              log.status === 'Out of Schedule' ? 'grape' :
-                              log.status === 'Punch Out Missing' ? 'red' :
-                              log.status === 'Absent' ? 'red' : 'gray'
-                            }
-                            variant="light"
-                          >
-                            {log.status || 'Unknown'}
-                          </Badge>
+                          <StatusBadge status={log.status} />
                         </Table.Td>
                       </Table.Tr>
                       {isExpanded && (
@@ -489,21 +454,7 @@ export default function EmployeeDashboardPage() {
                               <Stack gap="xs">
                                 <Group justify="space-between">
                                   <Text size="sm" fw={600}>Full Details</Text>
-                                  <Badge
-                                    color={
-                                      log.status === 'On-Time' ? 'green' :
-                                      log.status === 'Late-In' ? 'orange' :
-                                      log.status === 'Present' ? 'blue' :
-                                      log.status === 'On Leave' ? 'violet' :
-                                      log.status === 'Half Day' ? 'yellow' :
-                                      log.status === 'Out of Schedule' ? 'grape' :
-                                      log.status === 'Punch Out Missing' ? 'red' :
-                                      log.status === 'Absent' ? 'red' : 'gray'
-                                    }
-                                    variant="light"
-                                  >
-                                    {log.status || 'Unknown'}
-                                  </Badge>
+                                  <StatusBadge status={log.status} />
                                 </Group>
                                 <Divider />
                                 <Grid>

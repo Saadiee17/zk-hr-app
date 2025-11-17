@@ -20,10 +20,14 @@ import {
   Card,
 } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
-import { notifications } from '@mantine/notifications'
-import { IconCheck, IconX, IconCalendar, IconPlus } from '@tabler/icons-react'
+import { IconCalendar, IconPlus } from '@tabler/icons-react'
+import { showSuccess, showError } from '@/utils/notifications'
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminAccessBanner } from '@/components/AdminAccessBanner'
+import { LeaveStatusBadge } from '@/components/shared/LeaveStatusBadge'
+import { LeaveRequestForm } from '@/components/shared/LeaveRequestForm'
+import { LeaveBalanceCard } from '@/components/shared/LeaveBalanceCard'
+import { toYMD } from '@/utils/attendanceUtils'
 
 export default function EmployeeLeavePage() {
   const { user } = useAuth()
@@ -35,10 +39,6 @@ export default function EmployeeLeavePage() {
   
   // Request form state
   const [requestModalOpen, setRequestModalOpen] = useState(false)
-  const [selectedLeaveType, setSelectedLeaveType] = useState(null)
-  const [startDate, setStartDate] = useState(null)
-  const [endDate, setEndDate] = useState(null)
-  const [reason, setReason] = useState('')
 
   useEffect(() => {
     if (user) {
@@ -66,100 +66,38 @@ export default function EmployeeLeavePage() {
       setLeaveBalances(balancesData.data || [])
     } catch (error) {
       console.error('Failed to fetch leave data:', error)
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load leave data',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError('Failed to load leave data')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubmitRequest = async () => {
-    if (!selectedLeaveType || !startDate || !endDate) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please fill all required fields',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
-      return
-    }
-
-    if (startDate > endDate) {
-      notifications.show({
-        title: 'Error',
-        message: 'End date must be after start date',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
-      return
-    }
-
+  const handleSubmitRequest = async (formData) => {
     try {
       setSubmitting(true)
 
       const res = await fetch('/api/hr/leave-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: user.employeeId,
-          leave_type_id: selectedLeaveType,
-          start_date: startDate.toISOString().slice(0, 10),
-          end_date: endDate.toISOString().slice(0, 10),
-          reason,
-        }),
+        body: JSON.stringify(formData),
       })
 
       const data = await res.json()
 
       if (res.ok) {
-        notifications.show({
-          title: 'Success',
-          message: 'Leave request submitted successfully',
-          color: 'green',
-          icon: <IconCheck size={18} />,
-        })
+        showSuccess('Leave request submitted successfully')
         setRequestModalOpen(false)
-        resetForm()
         fetchData()
       } else {
         throw new Error(data.error || 'Failed to submit request')
       }
     } catch (error) {
-      notifications.show({
-        title: 'Error',
-        message: error.message,
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message)
     } finally {
       setSubmitting(false)
     }
   }
 
-  const resetForm = () => {
-    setSelectedLeaveType(null)
-    setStartDate(null)
-    setEndDate(null)
-    setReason('')
-  }
-
-  const getStatusBadge = (status) => {
-    const colors = {
-      pending: 'yellow',
-      approved: 'green',
-      rejected: 'red',
-      cancelled: 'gray',
-    }
-    return (
-      <Badge color={colors[status] || 'gray'} variant="light">
-        {status?.charAt(0).toUpperCase() + status?.slice(1)}
-      </Badge>
-    )
-  }
 
   return (
     <Container size="xl" py="xl">
@@ -219,7 +157,7 @@ export default function EmployeeLeavePage() {
                               {request.reason || '-'}
                             </Text>
                           </Table.Td>
-                          <Table.Td>{getStatusBadge(request.status)}</Table.Td>
+                          <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
                           <Table.Td>
                             {request.requested_at
                               ? new Date(request.requested_at).toLocaleDateString()
@@ -248,45 +186,7 @@ export default function EmployeeLeavePage() {
               {leaveBalances.length > 0 ? (
                 leaveBalances.map((balance) => (
                   <Grid.Col key={balance.id || `default-${balance.leave_type_id}`} span={{ base: 12, sm: 6, md: 4 }}>
-                    <Card shadow="sm" padding="lg" radius="md" withBorder>
-                      <Text size="lg" fw={600} mb="md">
-                        {balance.leave_type?.name}
-                      </Text>
-                      <Stack gap="xs">
-                        <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
-                            Total Allotted
-                          </Text>
-                          <Text size="sm" fw={500}>
-                            {balance.total_allotted} days
-                          </Text>
-                        </Group>
-                        <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
-                            Used
-                          </Text>
-                          <Text size="sm" fw={500} c="red">
-                            {balance.used} days
-                          </Text>
-                        </Group>
-                        <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
-                            Pending
-                          </Text>
-                          <Text size="sm" fw={500} c="yellow">
-                            {balance.pending} days
-                          </Text>
-                        </Group>
-                        <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
-                            Remaining
-                          </Text>
-                          <Text size="lg" fw={700} c="green">
-                            {balance.remaining} days
-                          </Text>
-                        </Group>
-                      </Stack>
-                    </Card>
+                    <LeaveBalanceCard balance={balance} />
                   </Grid.Col>
                 ))
               ) : (
@@ -310,61 +210,13 @@ export default function EmployeeLeavePage() {
         title="Request Leave"
         size="md"
       >
-        <Stack gap="md">
-          <Select
-            label="Leave Type"
-            placeholder="Select leave type"
-            data={leaveTypes.map((type) => ({
-              value: type.id,
-              label: type.name,
-            }))}
-            value={selectedLeaveType}
-            onChange={setSelectedLeaveType}
-            required
-          />
-
-          <DatePickerInput
-            label="Start Date"
-            placeholder="Select start date"
-            value={startDate}
-            onChange={setStartDate}
-            required
-            minDate={new Date()}
-          />
-
-          <DatePickerInput
-            label="End Date"
-            placeholder="Select end date"
-            value={endDate}
-            onChange={setEndDate}
-            required
-            minDate={startDate || new Date()}
-          />
-
-          <Textarea
-            label="Reason"
-            placeholder="Enter reason for leave (optional)"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={3}
-          />
-
-          {startDate && endDate && (
-            <Text size="sm" c="dimmed">
-              Total days:{' '}
-              {Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1} days
-            </Text>
-          )}
-
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setRequestModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmitRequest} loading={submitting}>
-              Submit Request
-            </Button>
-          </Group>
-        </Stack>
+        <LeaveRequestForm
+          leaveTypes={leaveTypes}
+          employeeId={user?.employeeId}
+          onSubmit={handleSubmitRequest}
+          onCancel={() => setRequestModalOpen(false)}
+          loading={submitting}
+        />
       </Modal>
     </Container>
   )

@@ -1022,6 +1022,215 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
   }
 }
 
+// Helper function to format cached result to API response format
+export const formatCachedResult = (cached) => ({
+  date: cached.date,
+  inTime: cached.in_time,
+  outTime: cached.out_time,
+  durationHours: Number(cached.duration_hours) || 0,
+  regularHours: Number(cached.regular_hours) || 0,
+  overtimeHours: Number(cached.overtime_hours) || 0,
+  status: cached.status,
+})
+
+// Helper function to get date range as array of date strings
+const getDateRange = (startDateStr, endDateStr) => {
+  const dates = []
+  const start = new Date(startDateStr + 'T00:00:00Z')
+  const end = new Date(endDateStr + 'T00:00:00Z')
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10))
+  }
+  return dates
+}
+
+// Extracted calculation function - performs full calculation for date range
+// Export the calculation function so batch endpoint can use it directly
+export const calculateForDateRange = async (employeeId, startDateStr, endDateStr) => {
+  const startDate = new Date(`${startDateStr}T00:00:00Z`)
+  const endDate = new Date(`${endDateStr}T00:00:00Z`)
+
+  // Fetch employee with ALL individual tz overrides and department
+  const { data: emp, error: empErr } = await supabase
+    .from('employees')
+    .select('id, department_id, individual_tz_1, individual_tz_2, individual_tz_3')
+    .eq('id', employeeId)
+    .maybeSingle()
+
+  if (empErr) throw new Error(empErr.message)
+  if (!emp) {
+    return [{
+      date: startDateStr,
+      durationHours: 0,
+      inTime: null,
+      outTime: null,
+      regularHours: 0,
+      overtimeHours: 0,
+      status: 'Employee Not Found',
+    }]
+  }
+  
+  // Collect ALL assigned time zone IDs (individual overrides first, then department schedules)
+  const assignedTzIds = []
+  
+  // Add individual time zones (in order of priority)
+  if (emp.individual_tz_1) assignedTzIds.push(emp.individual_tz_1)
+  if (emp.individual_tz_2) assignedTzIds.push(emp.individual_tz_2)
+  if (emp.individual_tz_3) assignedTzIds.push(emp.individual_tz_3)
+  
+  // If no individual overrides, get department schedules
+  if (assignedTzIds.length === 0 && emp.department_id) {
+    const { data: sched, error: schedErr } = await supabase
+      .from('schedules')
+      .select('tz_id_1, tz_id_2, tz_id_3')
+      .eq('department_id', emp.department_id)
+      .maybeSingle()
+    if (!schedErr && sched) {
+      if (sched.tz_id_1) assignedTzIds.push(sched.tz_id_1)
+      if (sched.tz_id_2) assignedTzIds.push(sched.tz_id_2)
+      if (sched.tz_id_3) assignedTzIds.push(sched.tz_id_3)
+    }
+  }
+  
+  if (assignedTzIds.length === 0) {
+    return [{
+      date: startDateStr,
+      durationHours: 0,
+      inTime: null,
+      outTime: null,
+      regularHours: 0,
+      overtimeHours: 0,
+      status: 'No Schedule Assigned',
+    }]
+  }
+
+  // Fetch ALL assigned time zones with their buffer times
+  const { data: timeZones, error: tzErr } = await supabase
+    .from('time_zones')
+    .select('id, tz_string, buffer_time_minutes')
+    .in('id', assignedTzIds)
+
+  if (tzErr) throw new Error(tzErr.message)
+  
+  // Create a map of tz_id -> tz_string and buffer_time_minutes
+  const tzMap = new Map()
+  const tzStrings = []
+  let scheduleBufferMinutes = null
+  
+  if (timeZones && timeZones.length > 0) {
+    for (const tz of timeZones) {
+      tzMap.set(tz.id, {
+        tz_string: tz.tz_string || null,
+        buffer_time_minutes: tz.buffer_time_minutes != null ? Number(tz.buffer_time_minutes) : null
+      })
+      if (tz.tz_string) {
+        tzStrings.push(tz.tz_string)
+        // Use buffer time from first schedule (or we'll use company default later)
+        if (scheduleBufferMinutes === null && tz.buffer_time_minutes != null) {
+          scheduleBufferMinutes = Number(tz.buffer_time_minutes)
+        }
+      }
+    }
+  }
+  
+  const tzString = tzStrings.length > 0 ? tzStrings[0] : null
+
+  // Get company-wide buffer time default
+  const { data: companySettings, error: companyErr } = await supabase
+    .from('company_settings')
+    .select('setting_value')
+    .eq('setting_key', 'buffer_time_minutes')
+    .maybeSingle()
+
+  let companyBufferMinutes = 30 // Default fallback
+  if (!companyErr && companySettings) {
+    companyBufferMinutes = Number(companySettings.setting_value) || 30
+  }
+
+  // Get department grace period as additional fallback (legacy support)
+  const { data: dept, error: deptErr } = await supabase
+    .from('departments')
+    .select('id, grace_period_minutes')
+    .eq('id', emp.department_id)
+    .maybeSingle()
+  if (deptErr) throw new Error(deptErr.message)
+  
+  // Priority: Schedule override > Company-wide default > Department grace period > 30 minutes
+  const graceMinutes = scheduleBufferMinutes != null 
+    ? scheduleBufferMinutes 
+    : (companyBufferMinutes != null ? companyBufferMinutes : (dept?.grace_period_minutes != null ? Number(dept.grace_period_minutes) : 30))
+
+  console.log('[daily-work-time] Input & Schedule', {
+    employee_id: employeeId,
+    start_date: startDateStr,
+    end_date: endDateStr,
+    tz_string: tzString || null,
+    schedule_buffer_time_minutes: scheduleBufferMinutes,
+    company_buffer_time_minutes: companyBufferMinutes,
+    department_grace_period_minutes: dept?.grace_period_minutes,
+    final_grace_period_minutes: graceMinutes,
+  })
+
+  // Fetch all logs in range
+  const logsStart = new Date(startDate)
+  logsStart.setDate(logsStart.getDate() - 1) // Start 1 day before for overnight shifts
+  const logsEnd = new Date(endDate)
+  logsEnd.setDate(logsEnd.getDate() + 2) // End 2 days after to capture overnight shift endings
+
+  const { data: logs, error: logsErr } = await supabase
+    .from('attendance_logs')
+    .select('status, log_time')
+    .eq('employee_id', employeeId)
+    .gte('log_time', logsStart.toISOString())
+    .lte('log_time', logsEnd.toISOString())
+    .order('log_time', { ascending: true })
+
+  if (logsErr) throw new Error(logsErr.message)
+
+  // Convert to simple timestamps (ignore status codes - they're unreliable)
+  const allLogs = (logs || [])
+    .map((l) => ({ t: new Date(l.log_time) }))
+    .filter((l) => !isNaN(l.t?.getTime?.()))
+  
+  console.log('[daily-work-time] Total Timestamps', { count: allLogs.length })
+
+  // Fetch working day settings
+  let workingDayEnabled = false
+  let workingDayStartTime = '10:00'
+  try {
+    const { data: companySettings } = await supabase
+      .from('company_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['working_day_enabled', 'working_day_start_time'])
+    
+    if (companySettings) {
+      const settingsMap = new Map(companySettings.map(s => [s.setting_key, s.setting_value]))
+      workingDayEnabled = settingsMap.get('working_day_enabled') === 'true'
+      workingDayStartTime = settingsMap.get('working_day_start_time') || '10:00'
+    }
+  } catch (e) {
+    console.warn('[daily-work-time] Failed to fetch working day settings:', e)
+  }
+
+  console.log('[daily-work-time] Working day settings:', { enabled: workingDayEnabled, startTime: workingDayStartTime })
+  console.log('[daily-work-time] Assigned schedules:', { count: tzStrings.length, schedules: tzStrings })
+
+  // Use intelligent shift matching with ALL assigned schedules
+  const results = await matchPunchesToShifts(
+    allLogs, 
+    startDate, 
+    endDate, 
+    { employee_id: employeeId, tz_strings: tzStrings }, // Pass all schedules
+    graceMinutes, 
+    workingDayEnabled, 
+    workingDayStartTime
+  )
+
+  console.log('[daily-work-time] Processed Shifts', { count: results.length })
+
+  return results
+}
+
 // GET /api/reports/daily-work-time?employee_id=UUID&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
 export async function GET(req) {
   try {
@@ -1046,181 +1255,106 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Invalid date range' }, { status: 400 })
     }
 
-    // Fetch employee with ALL individual tz overrides and department
-    const { data: emp, error: empErr } = await supabase
-      .from('employees')
-      .select('id, department_id, individual_tz_1, individual_tz_2, individual_tz_3')
-      .eq('id', employeeId)
-      .maybeSingle()
-
-    if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
-    if (!emp) return NextResponse.json({ success: true, data: [{ date: startDateStr, durationHours: 0, inTime: null, outTime: null, regularHours: 0, overtimeHours: 0, status: 'Employee Not Found' }] })
-    
-    // Collect ALL assigned time zone IDs (individual overrides first, then department schedules)
-    const assignedTzIds = []
-    
-    // Add individual time zones (in order of priority)
-    if (emp.individual_tz_1) assignedTzIds.push(emp.individual_tz_1)
-    if (emp.individual_tz_2) assignedTzIds.push(emp.individual_tz_2)
-    if (emp.individual_tz_3) assignedTzIds.push(emp.individual_tz_3)
-    
-    // If no individual overrides, get department schedules
-    if (assignedTzIds.length === 0 && emp.department_id) {
-      const { data: sched, error: schedErr } = await supabase
-        .from('schedules')
-        .select('tz_id_1, tz_id_2, tz_id_3')
-        .eq('department_id', emp.department_id)
-        .maybeSingle()
-      if (!schedErr && sched) {
-        if (sched.tz_id_1) assignedTzIds.push(sched.tz_id_1)
-        if (sched.tz_id_2) assignedTzIds.push(sched.tz_id_2)
-        if (sched.tz_id_3) assignedTzIds.push(sched.tz_id_3)
+    // STEP 1: Check cache first
+    let cachedResults = []
+    let cacheError = null
+    try {
+      const { data, error } = await supabase
+        .from('daily_attendance_calculations')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .gte('date', startDateStr)
+        .lte('date', endDateStr)
+        .order('date', { ascending: true })
+      
+      if (error) {
+        console.warn('[daily-work-time] Cache query error (will fall back to calculation):', error)
+        cacheError = error
+      } else {
+        cachedResults = data || []
       }
+    } catch (e) {
+      console.warn('[daily-work-time] Cache query exception (will fall back to calculation):', e)
+      cacheError = e
     }
-    
-    if (assignedTzIds.length === 0) {
+
+    // STEP 2: Determine which dates need calculation
+    const requestedDates = getDateRange(startDateStr, endDateStr)
+    const cachedDates = new Set(cachedResults.map(r => r.date))
+    const missingDates = requestedDates.filter(d => !cachedDates.has(d))
+
+    // STEP 3: If all dates are cached, return immediately (fast path)
+    if (missingDates.length === 0 && cachedResults.length > 0) {
+      console.log('[daily-work-time] All dates cached, returning from cache')
       return NextResponse.json({ 
         success: true, 
-        data: [{
-          date: startDateStr,
-          durationHours: 0,
-          inTime: null,
-          outTime: null,
-          regularHours: 0,
-          overtimeHours: 0,
-          status: 'No Schedule Assigned',
-        }]
+        data: cachedResults.map(formatCachedResult),
+        cached: true 
       })
     }
 
-    // Fetch ALL assigned time zones with their buffer times
-    const { data: timeZones, error: tzErr } = await supabase
-        .from('time_zones')
-      .select('id, tz_string, buffer_time_minutes')
-      .in('id', assignedTzIds)
+    // STEP 4: Calculate missing dates only
+    let calculatedResults = []
+    if (missingDates.length > 0) {
+      console.log(`[daily-work-time] Calculating ${missingDates.length} missing dates: ${missingDates.join(', ')}`)
+      
+      // Calculate for the full range (we need all dates for proper shift matching)
+      // But we'll only store the missing ones
+      const allCalculated = await calculateForDateRange(employeeId, startDateStr, endDateStr)
+      
+      // Filter to only missing dates
+      calculatedResults = allCalculated.filter(r => missingDates.includes(r.date))
+      
+      // STEP 5: Store new calculations in cache
+      if (calculatedResults.length > 0) {
+        const cacheInserts = calculatedResults.map(result => ({
+          employee_id: employeeId,
+          date: result.date,
+          status: result.status,
+          in_time: result.inTime,
+          out_time: result.outTime,
+          duration_hours: result.durationHours,
+          regular_hours: result.regularHours,
+          overtime_hours: result.overtimeHours,
+          last_calculated_at: new Date().toISOString(),
+        }))
 
-    if (tzErr) return NextResponse.json({ error: tzErr.message }, { status: 500 })
-    
-    // Create a map of tz_id -> tz_string and buffer_time_minutes
-    const tzMap = new Map()
-    const tzStrings = []
-    let scheduleBufferMinutes = null
-    
-    if (timeZones && timeZones.length > 0) {
-      for (const tz of timeZones) {
-        tzMap.set(tz.id, {
-          tz_string: tz.tz_string || null,
-          buffer_time_minutes: tz.buffer_time_minutes != null ? Number(tz.buffer_time_minutes) : null
-        })
-        if (tz.tz_string) {
-          tzStrings.push(tz.tz_string)
-          // Use buffer time from first schedule (or we'll use company default later)
-          if (scheduleBufferMinutes === null && tz.buffer_time_minutes != null) {
-            scheduleBufferMinutes = Number(tz.buffer_time_minutes)
+        try {
+          const { error: insertError } = await supabase
+            .from('daily_attendance_calculations')
+            .upsert(cacheInserts, {
+              onConflict: 'employee_id,date',
+            })
+
+          if (insertError) {
+            console.error('[daily-work-time] Cache insert error:', insertError)
+            // Don't fail the request, just log the error
+          } else {
+            console.log(`[daily-work-time] Cached ${cacheInserts.length} calculations`)
           }
+        } catch (e) {
+          console.error('[daily-work-time] Cache insert exception:', e)
+          // Don't fail the request, just log the error
         }
       }
     }
-    
-    // For now, use the first time zone string for backward compatibility
-    // We'll update matchPunchesToShifts to handle multiple schedules
-    const tzString = tzStrings.length > 0 ? tzStrings[0] : null
 
-    // Get company-wide buffer time default
-    const { data: companySettings, error: companyErr } = await supabase
-      .from('company_settings')
-      .select('setting_value')
-      .eq('setting_key', 'buffer_time_minutes')
-        .maybeSingle()
+    // STEP 6: Combine cached + newly calculated results
+    const allResults = [
+      ...cachedResults.map(formatCachedResult),
+      ...calculatedResults
+    ].sort((a, b) => new Date(a.date) - new Date(b.date))
 
-    let companyBufferMinutes = 30 // Default fallback
-    if (!companyErr && companySettings) {
-      companyBufferMinutes = Number(companySettings.setting_value) || 30
-    }
+    console.log(`[daily-work-time] Returning ${allResults.length} results (${cachedResults.length} cached, ${calculatedResults.length} calculated)`)
 
-    // Get department grace period as additional fallback (legacy support)
-    const { data: dept, error: deptErr } = await supabase
-      .from('departments')
-      .select('id, grace_period_minutes')
-      .eq('id', emp.department_id)
-      .maybeSingle()
-    if (deptErr) return NextResponse.json({ error: deptErr.message }, { status: 500 })
-    
-    // Priority: Schedule override > Company-wide default > Department grace period > 30 minutes
-    const graceMinutes = scheduleBufferMinutes != null 
-      ? scheduleBufferMinutes 
-      : (companyBufferMinutes != null ? companyBufferMinutes : (dept?.grace_period_minutes != null ? Number(dept.grace_period_minutes) : 30))
-
-    console.log('[daily-work-time] Input & Schedule', {
-      employee_id: employeeId,
-      start_date: startDateStr,
-      end_date: endDateStr,
-      tz_string: tzString || null,
-      schedule_buffer_time_minutes: scheduleBufferMinutes,
-      company_buffer_time_minutes: companyBufferMinutes,
-      department_grace_period_minutes: dept?.grace_period_minutes,
-      final_grace_period_minutes: graceMinutes,
+    return NextResponse.json({ 
+      success: true, 
+      data: allResults,
+      cached: cachedResults.length,
+      calculated: calculatedResults.length
     })
-
-    // Fetch all logs in range
-    const logsStart = new Date(startDate)
-    logsStart.setDate(logsStart.getDate() - 1) // Start 1 day before for overnight shifts
-    const logsEnd = new Date(endDate)
-    logsEnd.setDate(logsEnd.getDate() + 2) // End 2 days after to capture overnight shift endings
-
-    const { data: logs, error: logsErr } = await supabase
-      .from('attendance_logs')
-      .select('status, log_time')
-      .eq('employee_id', employeeId)
-      .gte('log_time', logsStart.toISOString())
-      .lte('log_time', logsEnd.toISOString())
-      .order('log_time', { ascending: true })
-
-    if (logsErr) return NextResponse.json({ error: logsErr.message }, { status: 500 })
-
-    // Convert to simple timestamps (ignore status codes - they're unreliable)
-    const allLogs = (logs || [])
-      .map((l) => ({ t: new Date(l.log_time) }))
-      .filter((l) => !isNaN(l.t?.getTime?.()))
-    
-    console.log('[daily-work-time] Total Timestamps', { count: allLogs.length })
-
-    // Fetch working day settings
-    let workingDayEnabled = false
-    let workingDayStartTime = '10:00'
-    try {
-      const { data: companySettings } = await supabase
-        .from('company_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['working_day_enabled', 'working_day_start_time'])
-      
-      if (companySettings) {
-        const settingsMap = new Map(companySettings.map(s => [s.setting_key, s.setting_value]))
-        workingDayEnabled = settingsMap.get('working_day_enabled') === 'true'
-        workingDayStartTime = settingsMap.get('working_day_start_time') || '10:00'
-      }
-    } catch (e) {
-      console.warn('[daily-work-time] Failed to fetch working day settings:', e)
-    }
-
-    console.log('[daily-work-time] Working day settings:', { enabled: workingDayEnabled, startTime: workingDayStartTime })
-    console.log('[daily-work-time] Assigned schedules:', { count: tzStrings.length, schedules: tzStrings })
-
-    // NEW: Use intelligent shift matching with ALL assigned schedules
-    const results = await matchPunchesToShifts(
-      allLogs, 
-      startDate, 
-      endDate, 
-      { employee_id: employeeId, tz_strings: tzStrings }, // Pass all schedules
-      graceMinutes, 
-      workingDayEnabled, 
-      workingDayStartTime
-    )
-
-    console.log('[daily-work-time] Processed Shifts', { count: results.length })
-
-    return NextResponse.json({ success: true, data: results })
   } catch (error) {
+    console.error('[daily-work-time] Error:', error)
     return NextResponse.json({ error: error.message || 'Unexpected error' }, { status: 500 })
   }
 }

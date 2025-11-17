@@ -1,42 +1,34 @@
 'use client'
 
-import { useEffect, useMemo, useState, Fragment } from 'react'
-import { Container, Title, Paper, Group, Text, Table, LoadingOverlay, Stack, Divider, Progress, RingProgress, Grid, Badge, Card, Collapse, ActionIcon, Select, Modal, TextInput, Button, Switch, Tooltip } from '@mantine/core'
-import { IconInfoCircle, IconChevronDown, IconChevronRight, IconEdit, IconCheck, IconX, IconCalendar, IconUser, IconBuilding, IconId, IconClock, IconMail, IconPhone, IconBriefcase, IconShield, IconBadge } from '@tabler/icons-react'
-import { DatePickerInput, Calendar, TimeInput } from '@mantine/dates'
-import { notifications } from '@mantine/notifications'
+import { useEffect, useMemo, useState } from 'react'
+import { Container, Title, Paper, Group, Text, Stack, Divider, Grid, Badge, ActionIcon, Select, Modal, TextInput, Button, Switch, LoadingOverlay } from '@mantine/core'
+import { IconEdit, IconCalendar, IconUser, IconBuilding, IconId, IconClock, IconMail, IconPhone, IconBriefcase, IconShield, IconBadge } from '@tabler/icons-react'
+import { Calendar, TimeInput } from '@mantine/dates'
+import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
-import { formatUTC12Hour, formatUTC12HourTime } from '@/utils/dateFormatting'
-
-// Helper function to convert decimal hours to "Xh Ym" format
-const formatHoursMinutes = (decimalHours) => {
-  if (!decimalHours || decimalHours === 0) return '0h'
-  const hours = Math.floor(decimalHours)
-  const minutes = Math.round((decimalHours - hours) * 60)
-  if (minutes === 0) {
-    return `${hours}h`
-  }
-  return `${hours}h ${minutes}m`
-}
+import { toYMD } from '@/utils/attendanceUtils'
+import { PRIVILEGE_OPTIONS } from '@/utils/employeeUtils'
+import { useDepartmentOptions } from '@/hooks/useDepartmentOptions'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { AdherenceMetrics } from '@/components/shared/AdherenceMetrics'
+import { AttendanceTable } from '@/components/shared/AttendanceTable'
+import { useDateRange } from '@/hooks/useDateRange'
+import { useStatusFilter } from '@/hooks/useStatusFilter'
+import { useAdherenceMetrics } from '@/hooks/useAdherenceMetrics'
+import { useAttendanceReport } from '@/hooks/useAttendanceReport'
 
 export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
   const [employee, setEmployee] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [reportLoading, setReportLoading] = useState(false)
-  const [reportRows, setReportRows] = useState([])
-  const [statusBreakdownOpen, setStatusBreakdownOpen] = useState(false)
-  const [expandedRows, setExpandedRows] = useState(new Set())
-  const [statusFilter, setStatusFilter] = useState('')
-  const [dateRange, setDateRange] = useState(() => {
-    const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    const end = new Date()
-    return [start, end]
-  })
-  const [dateFilter, setDateFilter] = useState('this-month')
+  
+  // Use shared hooks
+  const { dateRange, setDateRange, dateFilter, setDateFilter } = useDateRange('this-month')
+  const { reportRows, loading: reportLoading } = useAttendanceReport(employeeId, dateRange)
+  const { statusFilter, setStatusFilter, statusOptions, filteredRows } = useStatusFilter(reportRows)
+  const adherenceMetrics = useAdherenceMetrics(reportRows)
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignSaving, setAssignSaving] = useState(false)
-  const [deptOptions, setDeptOptions] = useState([])
+  const { options: deptOptions } = useDepartmentOptions()
   const [timeZones, setTimeZones] = useState([])
   const [exceptionModalOpen, setExceptionModalOpen] = useState(false)
   const [exceptions, setExceptions] = useState([])
@@ -67,7 +59,6 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
     transformValues: (values) => values,
   })
 
-  const toYMD = (d) => new Date(d).toISOString().slice(0, 10)
 
   const fetchEmployee = async () => {
     try {
@@ -78,44 +69,13 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       const found = (json.data || []).find((e) => e.id === employeeId)
       setEmployee(found || null)
     } catch (e) {
-      notifications.show({ title: 'Error', message: e.message || 'Failed to load employee', color: 'red' })
+      showError(e.message || 'Failed to load employee')
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchReport = async () => {
-    if (!employeeId || !dateRange?.[0] || !dateRange?.[1]) return
-    try {
-      setReportLoading(true)
-      const qs = new URLSearchParams({
-        employee_id: employeeId,
-        start_date: toYMD(dateRange[0]),
-        end_date: toYMD(dateRange[1]),
-      })
-      const res = await fetch(`/api/reports/daily-work-time?${qs.toString()}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch report')
-      setReportRows(json.data || [])
-    } catch (e) {
-      notifications.show({ title: 'Error', message: e.message || 'Failed to load report', color: 'red' })
-    } finally {
-      setReportLoading(false)
-    }
-  }
 
-  const fetchDeptOptions = async () => {
-    if (!isAdminView) return
-    try {
-      const res = await fetch('/api/hr/departments')
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch departments')
-      const opts = (json.data || []).map((d) => ({ value: d.id, label: d.name }))
-      setDeptOptions(opts)
-    } catch (error) {
-      setDeptOptions([])
-    }
-  }
 
   const fetchTimeZones = async () => {
     if (!isAdminView) return
@@ -137,7 +97,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch exceptions')
       setExceptions(json.data || [])
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     }
   }
 
@@ -149,7 +109,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch leave requests')
       setLeaveRequests(json.data || [])
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     }
   }
 
@@ -170,19 +130,11 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
     if (employeeId) {
       fetchEmployee()
       if (isAdminView) {
-        fetchDeptOptions()
         fetchTimeZones()
         fetchEmployeeSchedule(employeeId)
       }
     }
   }, [employeeId, isAdminView])
-
-  useEffect(() => {
-    if (employeeId) {
-      fetchReport()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeId, dateRange])
 
   const profileItems = useMemo(() => {
     if (!employee) return []
@@ -217,109 +169,6 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
     ]
   }, [employee, employeeSchedule])
 
-  const adherenceMetrics = useMemo(() => {
-    if (!reportRows || reportRows.length === 0) {
-      return {
-        adherence: 0,
-        totalDays: 0,
-        onTime: 0,
-        lateIn: 0,
-        absent: 0,
-        present: 0,
-        totalRegularHours: 0,
-        totalOvertimeHours: 0,
-        totalHours: 0,
-        statusBreakdown: {},
-      }
-    }
-
-    const statusCounts = {}
-    let onTime = 0
-    let lateIn = 0
-    let absent = 0
-    let present = 0
-    let onLeave = 0
-    let halfDay = 0
-    let totalRegularHours = 0
-    let totalOvertimeHours = 0
-
-    reportRows.forEach((row) => {
-      const status = row.status || 'Unknown'
-      statusCounts[status] = (statusCounts[status] || 0) + 1
-
-      if (status === 'On-Time') onTime++
-      else if (status === 'Late-In') lateIn++
-      else if (status === 'Absent') absent++
-      else if (status === 'Present') present++
-      else if (status === 'On Leave') onLeave++
-      else if (status === 'Half Day') {
-        present++
-        halfDay++
-      }
-      else if (status === 'Out of Schedule') {
-        present++
-      }
-
-      totalRegularHours += Number(row.regularHours) || 0
-      totalOvertimeHours += Number(row.overtimeHours) || 0
-    })
-
-    const totalDays = reportRows.length
-    const adherence = totalDays > 0 ? Math.round((onTime / totalDays) * 100) : 0
-
-    return {
-      adherence,
-      totalDays,
-      onTime,
-      lateIn,
-      absent,
-      present,
-      onLeave,
-      halfDay,
-      totalRegularHours: Math.round(totalRegularHours * 100) / 100,
-      totalOvertimeHours: Math.round(totalOvertimeHours * 100) / 100,
-      totalHours: Math.round((totalRegularHours + totalOvertimeHours) * 100) / 100,
-      statusBreakdown: statusCounts,
-    }
-  }, [reportRows])
-
-  const formatDateWithDay = (dateStr) => {
-    try {
-      const date = new Date(dateStr + 'T00:00:00Z')
-      const pakistaniDate = new Date(date.getTime() + 5 * 60 * 60 * 1000)
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      const dayName = dayNames[pakistaniDate.getUTCDay()]
-      const month = String(pakistaniDate.getUTCMonth() + 1).padStart(2, '0')
-      const day = String(pakistaniDate.getUTCDate()).padStart(2, '0')
-      const year = pakistaniDate.getUTCFullYear()
-      return { dayName, dateStr: `${month}/${day}/${year}` }
-    } catch (e) {
-      return { dayName: '', dateStr: dateStr }
-    }
-  }
-
-  const statusOptions = useMemo(() => {
-    const statuses = [...new Set(reportRows.map(r => r.status).filter(Boolean))]
-    return [
-      { value: '', label: 'All Statuses' },
-      ...statuses.map(s => ({ value: s, label: s }))
-    ]
-  }, [reportRows])
-
-  const filteredRows = useMemo(() => {
-    if (!statusFilter || statusFilter === '') return reportRows
-    return reportRows.filter(r => r.status === statusFilter)
-  }, [reportRows, statusFilter])
-
-  const toggleRow = (dateStr) => {
-    const newExpanded = new Set(expandedRows)
-    if (newExpanded.has(dateStr)) {
-      newExpanded.delete(dateStr)
-    } else {
-      newExpanded.add(dateStr)
-    }
-    setExpandedRows(newExpanded)
-  }
 
   const tzOptions = timeZones.map((t) => ({ value: String(t.id), label: `${t.id} - ${t.name}` }))
 
@@ -348,12 +197,12 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
         const details = json.details ? ` (${json.details})` : ''
         throw new Error(errorMsg + details)
       }
-      notifications.show({ title: 'Success', message: 'Leave request created and approved.', color: 'green' })
+      showSuccess('Leave request created and approved.')
       setShowLeaveRequestForm(false)
       setLeaveRequestForm({ leave_type: 'casual_leave', reason: '' })
       await fetchLeaveRequests(employee.id)
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     } finally {
       setExceptionSaving(false)
     }
@@ -388,10 +237,10 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to save exception')
-      notifications.show({ title: 'Success', message: 'Exception saved.', color: 'green' })
+      showSuccess('Exception saved.')
       await fetchExceptions(employee.id)
     } catch (error) {
-      notifications.show({ title: 'Save Failed', message: error.message, color: 'red' })
+      showError(error.message, 'Save Failed')
     } finally {
       setExceptionSaving(false)
     }
@@ -413,142 +262,17 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
         const json = await res.json().catch(()=>({}))
         throw new Error(json.error || 'Failed to delete exception')
       }
-      notifications.show({ title: 'Success', message: 'Exception cleared.', color: 'green' })
+      showSuccess('Exception cleared.')
       setCurrentException(null)
       await fetchExceptions(employee.id)
       handleDateSelect(selectedDate)
     } catch (error) {
-      notifications.show({ title: 'Delete Failed', message: error.message, color: 'red' })
+      showError(error.message, 'Delete Failed')
     } finally {
       setExceptionSaving(false)
     }
   }
 
-  const rows = filteredRows.map((r, idx) => {
-    const isExpanded = expandedRows.has(r.date)
-    const dateInfo = formatDateWithDay(r.date)
-    const isWeekend = dateInfo.dayName === 'Saturday' || dateInfo.dayName === 'Sunday'
-    const uniqueKey = `${r.date}-${idx}`
-    
-    return (
-      <Fragment key={uniqueKey}>
-        <Table.Tr 
-          style={{ cursor: 'pointer' }}
-          onClick={() => toggleRow(r.date)}
-        >
-          <Table.Td>
-            <Group gap="xs">
-              <ActionIcon variant="subtle" size="sm">
-                {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-              </ActionIcon>
-              <div>
-                <Text 
-                  fw={isWeekend ? 600 : 500} 
-                  size="sm"
-                  c={isWeekend ? 'blue' : undefined}
-                  style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}
-                >
-                  {dateInfo.dayName}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {dateInfo.dateStr}
-                </Text>
-              </div>
-            </Group>
-          </Table.Td>
-          <Table.Td>
-            <Text fw={500}>
-              {r.inTime ? formatUTC12HourTime(r.inTime) : '-'}
-            </Text>
-          </Table.Td>
-          <Table.Td>
-            <Text fw={500}>
-              {r.outTime ? formatUTC12HourTime(r.outTime) : '-'}
-            </Text>
-          </Table.Td>
-          <Table.Td>{formatHoursMinutes(r.regularHours ?? 0)}</Table.Td>
-          <Table.Td>{formatHoursMinutes(r.overtimeHours ?? 0)}</Table.Td>
-          <Table.Td>{formatHoursMinutes((r.regularHours ?? 0) + (r.overtimeHours ?? 0))}</Table.Td>
-          <Table.Td>
-            <Badge
-              color={
-                r.status === 'On-Time' ? 'green' :
-                r.status === 'Late-In' ? 'orange' :
-                r.status === 'Present' ? 'blue' :
-                r.status === 'On Leave' ? 'violet' :
-                r.status === 'Half Day' ? 'yellow' :
-                r.status === 'Out of Schedule' ? 'grape' :
-                r.status === 'Punch Out Missing' ? 'red' :
-                r.status === 'Absent' ? 'red' : 'gray'
-              }
-              variant="light"
-            >
-              {r.status || 'Unknown'}
-            </Badge>
-          </Table.Td>
-        </Table.Tr>
-        {isExpanded && (
-          <Table.Tr key={`${uniqueKey}-expanded`}>
-            <Table.Td colSpan={7} style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-              <Paper p="md" withBorder>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="sm" fw={600}>Full Details</Text>
-                    <Badge
-                      color={
-                        r.status === 'On-Time' ? 'green' :
-                        r.status === 'Late-In' ? 'orange' :
-                        r.status === 'Present' ? 'blue' :
-                        r.status === 'On Leave' ? 'violet' :
-                        r.status === 'Half Day' ? 'yellow' :
-                        r.status === 'Out of Schedule' ? 'grape' :
-                        r.status === 'Punch Out Missing' ? 'red' :
-                        r.status === 'Absent' ? 'red' : 'gray'
-                      }
-                      variant="light"
-                    >
-                      {r.status || 'Unknown'}
-                    </Badge>
-                  </Group>
-                  <Divider />
-                  <Grid>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">Date</Text>
-                      <Text fw={500}>{dateInfo.dayName}, {dateInfo.dateStr}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">Status</Text>
-                      <Text fw={500}>{r.status || 'Unknown'}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">In Time</Text>
-                      <Text fw={500}>{r.inTime ? formatUTC12Hour(r.inTime) : '-'}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">Out Time</Text>
-                      <Text fw={500}>{r.outTime ? formatUTC12Hour(r.outTime) : '-'}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">Regular Hours</Text>
-                      <Text fw={500}>{formatHoursMinutes(r.regularHours ?? 0)}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                      <Text size="xs" c="dimmed">Overtime Hours</Text>
-                      <Text fw={500}>{formatHoursMinutes(r.overtimeHours ?? 0)}</Text>
-                    </Grid.Col>
-                    <Grid.Col span={12}>
-                      <Text size="xs" c="dimmed">Total Duration</Text>
-                      <Text fw={500}>{formatHoursMinutes(r.durationHours ?? 0)}</Text>
-                    </Grid.Col>
-                  </Grid>
-                </Stack>
-              </Paper>
-            </Table.Td>
-          </Table.Tr>
-        )}
-      </Fragment>
-    )
-  })
 
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
@@ -648,115 +372,16 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
             </Paper>
             <Divider my="sm" />
             <Stack gap="md">
-              {/* Quick Date Filters */}
               <div>
                 <Text size="sm" fw={500} mb="xs">Quick Filters</Text>
-                <Group gap="xs" wrap="wrap">
-                  <Button
-                    variant={dateFilter === 'today' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      const today = new Date()
-                      today.setHours(0, 0, 0, 0)
-                      setDateRange([today, today])
-                      setDateFilter('today')
-                    }}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    variant={dateFilter === 'yesterday' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      const yesterday = new Date()
-                      yesterday.setDate(yesterday.getDate() - 1)
-                      yesterday.setHours(0, 0, 0, 0)
-                      setDateRange([yesterday, yesterday])
-                      setDateFilter('yesterday')
-                    }}
-                  >
-                    Yesterday
-                  </Button>
-                  <Button
-                    variant={dateFilter === 'this-week' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      const now = new Date()
-                      const startOfWeek = new Date(now)
-                      const day = startOfWeek.getDay()
-                      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
-                      startOfWeek.setDate(diff)
-                      startOfWeek.setHours(0, 0, 0, 0)
-                      setDateRange([startOfWeek, now])
-                      setDateFilter('this-week')
-                    }}
-                  >
-                    This Week
-                  </Button>
-                  <Button
-                    variant={dateFilter === 'last-week' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      const now = new Date()
-                      const startOfThisWeek = new Date(now)
-                      const day = startOfThisWeek.getDay()
-                      const diff = startOfThisWeek.getDate() - day + (day === 0 ? -6 : 1)
-                      startOfThisWeek.setDate(diff)
-                      startOfThisWeek.setHours(0, 0, 0, 0)
-                      const endOfLastWeek = new Date(startOfThisWeek)
-                      endOfLastWeek.setDate(endOfLastWeek.getDate() - 1)
-                      const startOfLastWeek = new Date(endOfLastWeek)
-                      startOfLastWeek.setDate(startOfLastWeek.getDate() - 6)
-                      setDateRange([startOfLastWeek, endOfLastWeek])
-                      setDateFilter('last-week')
-                    }}
-                  >
-                    Last Week
-                  </Button>
-                  <Button
-                    variant={dateFilter === 'this-month' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      const now = new Date()
-                      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-                      setDateRange([start, now])
-                      setDateFilter('this-month')
-                    }}
-                  >
-                    This Month
-                  </Button>
-                  <Button
-                    variant={dateFilter === 'custom' ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      setDateFilter('custom')
-                    }}
-                  >
-                    Custom
-                  </Button>
-                </Group>
-              </div>
-              
-              {dateFilter === 'custom' && (
-                <DatePickerInput
-                  type="range"
-                  label="Custom Date Range"
-                  placeholder="Pick range"
-                  value={dateRange}
-                  onChange={(range) => {
-                    setDateRange(range)
-                    if (range && range[0] && range[1]) {
-                      setDateFilter('custom')
-                    } else {
-                      const now = new Date()
-                      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-                      setDateRange([start, now])
-                      setDateFilter('this-month')
-                    }
-                  }}
-                  clearable
+                <DateRangeFilter 
+                  value={dateRange} 
+                  onChange={setDateRange}
+                  defaultFilter={dateFilter}
+                  dateFilter={dateFilter}
+                  onFilterChange={setDateFilter}
                 />
-              )}
+              </div>
               
               <Select
                 label="Filter by Status"
@@ -771,436 +396,15 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
 
             {/* Adherence Metrics Visualization */}
             {reportRows.length > 0 && (
-              <Paper withBorder p="md" mt="md" radius="md">
-                <Stack gap="md">
-                  <div>
-                    <Title order={4} mb={4}>Attendance Adherence</Title>
-                    <Text size="sm" c="dimmed">Performance overview for the selected period</Text>
-                  </div>
-                  
-                  <Grid gutter="md">
-                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-                      <Card withBorder p="md" radius="md" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        <Stack gap="md" align="center" justify="center" style={{ flex: 1, minHeight: 0 }}>
-                          <Text size="xs" c="dimmed" fw={500} ta="center" style={{ letterSpacing: '0.5px' }}>
-                            On-Time Rate
-                          </Text>
-                          <RingProgress
-                            size={140}
-                            thickness={14}
-                            sections={[
-                              { 
-                                value: adherenceMetrics.adherence, 
-                                color: adherenceMetrics.adherence >= 80 ? 'teal' : adherenceMetrics.adherence >= 60 ? 'yellow' : 'red' 
-                              },
-                            ]}
-                            label={
-                              <div style={{ textAlign: 'center' }}>
-                                <Text ta="center" fw={700} size="xl" style={{ lineHeight: 1.2 }}>
-                                  {adherenceMetrics.adherence}%
-                                </Text>
-                              </div>
-                            }
-                          />
-                          <div style={{ textAlign: 'center', width: '100%' }}>
-                            <Text size="sm" fw={600} mb={2}>
-                              {adherenceMetrics.onTime} / {adherenceMetrics.totalDays}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              days on-time
-                            </Text>
-                          </div>
-                        </Stack>
-                      </Card>
-                    </Grid.Col>
-                    
-                    <Grid.Col span={{ base: 12, sm: 6, md: 5 }}>
-                      <Card withBorder p="md" radius="md" style={{ height: '100%' }}>
-                        <Stack gap="md">
-                          <Group justify="space-between" align="flex-start">
-                            <div>
-                              <Text size="sm" fw={600} mb="xs">Status Breakdown</Text>
-                              <Text size="xs" c="dimmed">Attendance distribution</Text>
-                            </div>
-                            <Tooltip label="View status definitions" withArrow>
-                              <ActionIcon
-                                variant="subtle"
-                                size="sm"
-                                color="gray"
-                                onClick={() => setStatusBreakdownOpen(!statusBreakdownOpen)}
-                              >
-                                <IconInfoCircle size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-                          </Group>
-                          
-                          {statusBreakdownOpen && (
-                            <Paper p="xs" withBorder radius="sm" style={{ backgroundColor: 'var(--mantine-color-blue-0)' }}>
-                              <Collapse in={statusBreakdownOpen}>
-                                <Stack gap={4}>
-                                  <Text size="xs" fw={600} mb={4}>Status Definitions:</Text>
-                                  <Text size="xs"><strong>On-Time:</strong> Punched in within grace period</Text>
-                                  <Text size="xs"><strong>Late-In:</strong> Punched in after grace period</Text>
-                                  <Text size="xs"><strong>Present:</strong> Worked on unscheduled day</Text>
-                                  <Text size="xs"><strong>Absent:</strong> No punch, shift scheduled</Text>
-                                  <Text size="xs"><strong>On Leave:</strong> Approved leave, no punches</Text>
-                                  <Text size="xs"><strong>Half Day:</strong> Scheduled half-day exception</Text>
-                                </Stack>
-                              </Collapse>
-                            </Paper>
-                          )}
-                          
-                          <Stack gap="xs">
-                            <Group justify="space-between" p="xs" style={{ 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Group gap="xs">
-                                <div style={{ 
-                                  width: '8px', 
-                                  height: '8px', 
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--mantine-color-teal-6)'
-                                }} />
-                                <Text size="sm">On-Time</Text>
-                              </Group>
-                              <Group gap="md">
-                                <Text size="sm" fw={600}>{adherenceMetrics.onTime}</Text>
-                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100) : 0}%
-                                </Text>
-                              </Group>
-                            </Group>
-                            
-                            <Group justify="space-between" p="xs" style={{ 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Group gap="xs">
-                                <div style={{ 
-                                  width: '8px', 
-                                  height: '8px', 
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--mantine-color-orange-6)'
-                                }} />
-                                <Text size="sm">Late-In</Text>
-                              </Group>
-                              <Group gap="md">
-                                <Text size="sm" fw={600}>{adherenceMetrics.lateIn}</Text>
-                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100) : 0}%
-                                </Text>
-                              </Group>
-                            </Group>
-                            
-                            <Group justify="space-between" p="xs" style={{ 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Group gap="xs">
-                                <div style={{ 
-                                  width: '8px', 
-                                  height: '8px', 
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--mantine-color-blue-6)'
-                                }} />
-                                <Text size="sm">Present</Text>
-                              </Group>
-                              <Group gap="md">
-                                <Text size="sm" fw={600}>{adherenceMetrics.present}</Text>
-                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.present / adherenceMetrics.totalDays) * 100) : 0}%
-                                </Text>
-                              </Group>
-                            </Group>
-                            
-                            <Group justify="space-between" p="xs" style={{ 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Group gap="xs">
-                                <div style={{ 
-                                  width: '8px', 
-                                  height: '8px', 
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--mantine-color-red-6)'
-                                }} />
-                                <Text size="sm">Absent</Text>
-                              </Group>
-                              <Group gap="md">
-                                <Text size="sm" fw={600}>{adherenceMetrics.absent}</Text>
-                                <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                  {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.absent / adherenceMetrics.totalDays) * 100) : 0}%
-                                </Text>
-                              </Group>
-                            </Group>
-                            
-                            {adherenceMetrics.onLeave > 0 && (
-                              <Group justify="space-between" p="xs" style={{ 
-                                borderRadius: '6px',
-                                backgroundColor: 'var(--mantine-color-gray-0)'
-                              }}>
-                                <Group gap="xs">
-                                  <div style={{ 
-                                    width: '8px', 
-                                    height: '8px', 
-                                    borderRadius: '50%',
-                                    backgroundColor: 'var(--mantine-color-violet-6)'
-                                  }} />
-                                  <Text size="sm">On Leave</Text>
-                                </Group>
-                                <Group gap="md">
-                                  <Text size="sm" fw={600}>{adherenceMetrics.onLeave || 0}</Text>
-                                  <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                    {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100) : 0}%
-                                  </Text>
-                                </Group>
-                              </Group>
-                            )}
-                            
-                            {adherenceMetrics.halfDay > 0 && (
-                              <Group justify="space-between" p="xs" style={{ 
-                                borderRadius: '6px',
-                                backgroundColor: 'var(--mantine-color-gray-0)'
-                              }}>
-                                <Group gap="xs">
-                                  <div style={{ 
-                                    width: '8px', 
-                                    height: '8px', 
-                                    borderRadius: '50%',
-                                    backgroundColor: 'var(--mantine-color-yellow-6)'
-                                  }} />
-                                  <Text size="sm">Half Day</Text>
-                                </Group>
-                                <Group gap="md">
-                                  <Text size="sm" fw={600}>{adherenceMetrics.halfDay || 0}</Text>
-                                  <Text size="xs" c="dimmed" style={{ minWidth: '35px' }}>
-                                    {adherenceMetrics.totalDays > 0 ? Math.round((adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100) : 0}%
-                                  </Text>
-                                </Group>
-                              </Group>
-                            )}
-                          </Stack>
-                          
-                          <Divider />
-                          
-                          <Group justify="space-between">
-                            <Text size="sm" fw={500}>Total Days</Text>
-                            <Text fw={700} size="md">{adherenceMetrics.totalDays}</Text>
-                          </Group>
-                        </Stack>
-                      </Card>
-                    </Grid.Col>
-                    
-                    <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-                      <Card withBorder p="md" radius="md" style={{ height: '100%' }}>
-                        <Stack gap="md">
-                          <div>
-                            <Text size="sm" fw={600} mb="xs">Hours Summary</Text>
-                            <Text size="xs" c="dimmed">Work hours breakdown</Text>
-                          </div>
-                          
-                          <Stack gap="sm">
-                            <div>
-                              <Group justify="space-between" mb={4}>
-                                <Text size="sm">Regular Hours</Text>
-                                <Text fw={600} size="sm">{formatHoursMinutes(adherenceMetrics.totalRegularHours)}</Text>
-                              </Group>
-                              <Progress
-                                value={adherenceMetrics.totalHours > 0 ? (adherenceMetrics.totalRegularHours / adherenceMetrics.totalHours) * 100 : 0}
-                                color="blue"
-                                size="sm"
-                                radius="sm"
-                              />
-                            </div>
-                            
-                            <div>
-                              <Group justify="space-between" mb={4}>
-                                <Text size="sm">Overtime Hours</Text>
-                                <Text fw={600} size="sm">{formatHoursMinutes(adherenceMetrics.totalOvertimeHours)}</Text>
-                              </Group>
-                              <Progress
-                                value={adherenceMetrics.totalHours > 0 ? (adherenceMetrics.totalOvertimeHours / adherenceMetrics.totalHours) * 100 : 0}
-                                color="orange"
-                                size="sm"
-                                radius="sm"
-                              />
-                            </div>
-                            
-                            <Divider />
-                            
-                            <Group justify="space-between" p="xs" style={{ 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Text size="sm" fw={600}>Total Hours</Text>
-                              <Text fw={700} size="md">{formatHoursMinutes(adherenceMetrics.totalHours)}</Text>
-                            </Group>
-                          </Stack>
-                        </Stack>
-                      </Card>
-                    </Grid.Col>
-                  </Grid>
-
-                  {adherenceMetrics.totalDays > 0 && (
-                    <div>
-                      <Text size="sm" fw={600} mb="sm">Status Distribution</Text>
-                      <Grid gutter="xs">
-                        <Grid.Col span={{ base: 6, sm: 3 }}>
-                          <div style={{ 
-                            padding: '8px', 
-                            borderRadius: '6px',
-                            backgroundColor: 'var(--mantine-color-gray-0)'
-                          }}>
-                            <Text size="xs" c="dimmed" mb={4}>On-Time</Text>
-                            <Text size="lg" fw={700} mb={4}>
-                              {Math.round((adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100)}%
-                            </Text>
-                            <Progress
-                              value={(adherenceMetrics.onTime / adherenceMetrics.totalDays) * 100}
-                              color="teal"
-                              size="sm"
-                              radius="sm"
-                            />
-                          </div>
-                        </Grid.Col>
-                        <Grid.Col span={{ base: 6, sm: 3 }}>
-                          <div style={{ 
-                            padding: '8px', 
-                            borderRadius: '6px',
-                            backgroundColor: 'var(--mantine-color-gray-0)'
-                          }}>
-                            <Text size="xs" c="dimmed" mb={4}>Late-In</Text>
-                            <Text size="lg" fw={700} mb={4}>
-                              {Math.round((adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100)}%
-                            </Text>
-                            <Progress
-                              value={(adherenceMetrics.lateIn / adherenceMetrics.totalDays) * 100}
-                              color="orange"
-                              size="sm"
-                              radius="sm"
-                            />
-                          </div>
-                        </Grid.Col>
-                        <Grid.Col span={{ base: 6, sm: 3 }}>
-                          <div style={{ 
-                            padding: '8px', 
-                            borderRadius: '6px',
-                            backgroundColor: 'var(--mantine-color-gray-0)'
-                          }}>
-                            <Text size="xs" c="dimmed" mb={4}>Present</Text>
-                            <Text size="lg" fw={700} mb={4}>
-                              {Math.round((adherenceMetrics.present / adherenceMetrics.totalDays) * 100)}%
-                            </Text>
-                            <Progress
-                              value={(adherenceMetrics.present / adherenceMetrics.totalDays) * 100}
-                              color="blue"
-                              size="sm"
-                              radius="sm"
-                            />
-                          </div>
-                        </Grid.Col>
-                        <Grid.Col span={{ base: 6, sm: 3 }}>
-                          <div style={{ 
-                            padding: '8px', 
-                            borderRadius: '6px',
-                            backgroundColor: 'var(--mantine-color-gray-0)'
-                          }}>
-                            <Text size="xs" c="dimmed" mb={4}>Absent</Text>
-                            <Text size="lg" fw={700} mb={4}>
-                              {Math.round((adherenceMetrics.absent / adherenceMetrics.totalDays) * 100)}%
-                            </Text>
-                            <Progress
-                              value={(adherenceMetrics.absent / adherenceMetrics.totalDays) * 100}
-                              color="red"
-                              size="sm"
-                              radius="sm"
-                            />
-                          </div>
-                        </Grid.Col>
-                        {adherenceMetrics.onLeave > 0 && (
-                          <Grid.Col span={{ base: 6, sm: 3 }}>
-                            <div style={{ 
-                              padding: '8px', 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Text size="xs" c="dimmed" mb={4}>On Leave</Text>
-                              <Text size="lg" fw={700} mb={4}>
-                                {Math.round((adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100)}%
-                              </Text>
-                              <Progress
-                                value={(adherenceMetrics.onLeave / adherenceMetrics.totalDays) * 100}
-                                color="violet"
-                                size="sm"
-                                radius="sm"
-                              />
-                            </div>
-                          </Grid.Col>
-                        )}
-                        {adherenceMetrics.halfDay > 0 && (
-                          <Grid.Col span={{ base: 6, sm: 3 }}>
-                            <div style={{ 
-                              padding: '8px', 
-                              borderRadius: '6px',
-                              backgroundColor: 'var(--mantine-color-gray-0)'
-                            }}>
-                              <Text size="xs" c="dimmed" mb={4}>Half Day</Text>
-                              <Text size="lg" fw={700} mb={4}>
-                                {Math.round((adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100)}%
-                              </Text>
-                              <Progress
-                                value={(adherenceMetrics.halfDay / adherenceMetrics.totalDays) * 100}
-                                color="yellow"
-                                size="sm"
-                                radius="sm"
-                              />
-                            </div>
-                          </Grid.Col>
-                        )}
-                      </Grid>
-                    </div>
-                  )}
-                </Stack>
-              </Paper>
+              <AdherenceMetrics metrics={adherenceMetrics} />
             )}
 
-            <Paper withBorder p="sm" pos="relative" mt="md">
-              <LoadingOverlay visible={reportLoading} />
-              <Table striped highlightOnHover withTableBorder withColumnBorders>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Date</Table.Th>
-                    <Table.Th>In Time</Table.Th>
-                    <Table.Th>Out Time</Table.Th>
-                    <Table.Th>Regular Hours</Table.Th>
-                    <Table.Th>Overtime Hours</Table.Th>
-                    <Table.Th>Total Hours</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                {filteredRows.length === 0 && reportRows.length > 0 && (
-                  <Table.Caption>
-                    <Text c="dimmed" size="sm">
-                      No records match the selected filter. Showing {reportRows.length} total record{reportRows.length !== 1 ? 's' : ''}.
-                    </Text>
-                  </Table.Caption>
-                )}
-                <Table.Tbody>
-                  {rows}
-                  {(!reportRows || reportRows.length === 0) && (
-                    <Table.Tr>
-                      <Table.Td colSpan={7}><Text c="dimmed">No records</Text></Table.Td>
-                    </Table.Tr>
-                  )}
-                  {reportRows.length > 0 && filteredRows.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={7}><Text c="dimmed">No records match the selected filter</Text></Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Paper>
+            {/* Attendance Table */}
+            <AttendanceTable 
+              data={reportRows}
+              loading={reportLoading}
+              filteredData={filteredRows}
+            />
           </Stack>
         ) : (
           <Text c="dimmed">No employee found</Text>
@@ -1235,21 +439,11 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                 })
                 const json = await res.json()
                 if (!res.ok) throw new Error(json.error || 'Failed to save employee')
-                notifications.show({
-                  title: 'Employee updated',
-                  message: 'Changes saved successfully',
-                  color: 'green',
-                  icon: <IconCheck size={18} />,
-                })
+                showSuccess('Changes saved successfully', 'Employee updated')
                 setAssignOpen(false)
                 await fetchEmployee()
               } catch (error) {
-                notifications.show({
-                  title: 'Update failed',
-                  message: error.message || 'Could not update employee',
-                  color: 'red',
-                  icon: <IconX size={18} />,
-                })
+                showError(error.message || 'Could not update employee', 'Update failed')
               } finally {
                 setAssignSaving(false)
               }
@@ -1272,12 +466,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                 />
                 <Select
                   label="Privilege"
-                  data={[
-                    { value: '0', label: 'Employee' },
-                    { value: '1', label: 'Registrar' },
-                    { value: '2', label: 'Administrator' },
-                    { value: '3', label: 'Super Admin' },
-                  ]}
+                  data={PRIVILEGE_OPTIONS}
                   {...editForm.getInputProps('privilege')}
                 />
                 <Switch

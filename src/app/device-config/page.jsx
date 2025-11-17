@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Container, Title, Paper, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Checkbox, Badge, Tabs } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconTrash, IconCheck, IconX, IconEdit, IconUsers } from '@tabler/icons-react'
+import { IconTrash, IconEdit, IconUsers } from '@tabler/icons-react'
+import { showSuccess, showError } from '@/utils/notifications'
 import { TimeInput } from '@mantine/dates'
 
 export default function DeviceConfigPage() {
@@ -178,22 +178,14 @@ export default function DeviceConfigPage() {
 
   const handleSaveSchedule = async (skipNightCheck = false) => {
     if (!scheduleName.trim()) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please enter a schedule name',
-        color: 'red',
-      })
+      showError('Please enter a schedule name')
       return
     }
 
     const hasTimes = Boolean(shiftStart) && Boolean(shiftEnd)
     const hasDay = daySelected.some(Boolean)
     if (!hasTimes || !hasDay) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please define the shift time and select at least one working day.',
-        color: 'red',
-      })
+      showError('Please define the shift time and select at least one working day.')
       return
     }
 
@@ -219,11 +211,7 @@ export default function DeviceConfigPage() {
     }
 
     if (!nextId) {
-      notifications.show({
-        title: 'Error',
-        message: 'All 50 schedule slots are in use. Please delete an existing schedule first.',
-        color: 'red',
-      })
+      showError('All 50 schedule slots are in use. Please delete an existing schedule first.')
       return
     }
 
@@ -247,12 +235,7 @@ export default function DeviceConfigPage() {
         throw new Error(json.error || 'Failed to save schedule')
       }
 
-      notifications.show({
-        title: 'Schedule Saved',
-        message: `Schedule "${scheduleName.trim()}" saved successfully`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`Schedule "${scheduleName.trim()}" saved successfully`, 'Schedule Saved')
       await fetchTimeZones()
       // Reset form
       setScheduleName('')
@@ -261,12 +244,7 @@ export default function DeviceConfigPage() {
       setDaySelected(days.map(() => false))
       setBufferTimeMinutes(null) // Reset to null (use company default)
     } catch (error) {
-      notifications.show({
-        title: 'Save Failed',
-        message: error.message || 'Could not save schedule',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not save schedule', 'Save Failed')
     } finally {
       setSaving(false)
     }
@@ -316,22 +294,14 @@ export default function DeviceConfigPage() {
 
   const handleSaveEdit = async (skipNightCheck = false) => {
     if (!editName.trim()) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please enter a schedule name',
-        color: 'red',
-      })
+      showError('Please enter a schedule name')
       return
     }
 
     const hasTimes = Boolean(editShiftStart) && Boolean(editShiftEnd)
     const hasDay = editDaySelected.some(Boolean)
     if (!hasTimes || !hasDay) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please define the shift time and select at least one working day.',
-        color: 'red',
-      })
+      showError('Please define the shift time and select at least one working day.')
       return
     }
 
@@ -366,22 +336,12 @@ export default function DeviceConfigPage() {
         throw new Error(json.error || 'Failed to update schedule')
       }
 
-      notifications.show({
-        title: 'Schedule Updated',
-        message: `Schedule "${editName.trim()}" updated successfully`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`Schedule "${editName.trim()}" updated successfully`, 'Schedule Updated')
       await fetchTimeZones()
       setEditModalOpen(false)
       setEditingSchedule(null)
     } catch (error) {
-      notifications.show({
-        title: 'Update Failed',
-        message: error.message || 'Could not update schedule',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not update schedule', 'Update Failed')
     } finally {
       setEditSaving(false)
     }
@@ -403,19 +363,9 @@ export default function DeviceConfigPage() {
         throw new Error(json.error || 'Failed to save company buffer time')
       }
 
-      notifications.show({
-        title: 'Company Buffer Time Updated',
-        message: `Company-wide buffer time set to ${companyBufferTime} minutes`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`Company-wide buffer time set to ${companyBufferTime} minutes`, 'Company Buffer Time Updated')
     } catch (error) {
-      notifications.show({
-        title: 'Save Failed',
-        message: error.message || 'Could not save company buffer time',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not save company buffer time', 'Save Failed')
     } finally {
       setSavingCompanyBuffer(false)
     }
@@ -438,21 +388,14 @@ export default function DeviceConfigPage() {
         throw new Error(json.error || 'Failed to save working day settings')
       }
 
-      notifications.show({
-        title: 'Working Day Settings Updated',
-        message: workingDayEnabled 
+      showSuccess(
+        workingDayEnabled 
           ? `Working day enabled: ${workingDayStartTime} to 9:59 AM next day`
           : 'Working day concept disabled - using calendar dates',
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+        'Working Day Settings Updated'
+      )
     } catch (error) {
-      notifications.show({
-        title: 'Save Failed',
-        message: error.message || 'Could not save working day settings',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not save working day settings', 'Save Failed')
     } finally {
       setSavingWorkingDay(false)
     }
@@ -492,20 +435,10 @@ export default function DeviceConfigPage() {
                 const res = await fetch(`/api/hr/time-zones/${tz.id}`, { method: 'DELETE' })
                 const json = await res.json().catch(() => ({}))
                 if (!res.ok) throw new Error(json.error || 'Failed to delete schedule')
-                notifications.show({
-                  title: 'Deleted',
-                  message: `Schedule "${tz.name}" removed`,
-                  color: 'green',
-                  icon: <IconCheck size={18} />,
-                })
+                showSuccess(`Schedule "${tz.name}" removed`, 'Deleted')
                 await fetchTimeZones()
               } catch (error) {
-                notifications.show({
-                  title: 'Delete Failed',
-                  message: error.message || 'Could not delete schedule',
-                  color: 'red',
-                  icon: <IconX size={18} />,
-                })
+                showError(error.message || 'Could not delete schedule', 'Delete Failed')
               }
             }}
           >
@@ -684,11 +617,7 @@ export default function DeviceConfigPage() {
               variant="default"
               onClick={() => {
                 setConfirmNightOpen(false)
-                notifications.show({
-                  title: 'Night shift cancelled',
-                  message: 'Please adjust the Start/End times to proceed with a single-day shift.',
-                  color: 'red',
-                })
+                showError('Please adjust the Start/End times to proceed with a single-day shift.', 'Night shift cancelled')
               }}
             >
               No

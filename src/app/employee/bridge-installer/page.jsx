@@ -13,8 +13,8 @@ import {
   Alert,
   Code,
 } from '@mantine/core'
-import { IconDownload, IconInfoCircle, IconCheck } from '@tabler/icons-react'
-import { notifications } from '@mantine/notifications'
+import { IconDownload, IconInfoCircle } from '@tabler/icons-react'
+import { showSuccess } from '@/utils/notifications'
 import { AdminAccessBanner } from '@/components/AdminAccessBanner'
 
 export default function BridgeInstallerPage() {
@@ -25,12 +25,7 @@ export default function BridgeInstallerPage() {
     link.download = 'ZKBridgeInstaller.exe'
     link.click()
 
-    notifications.show({
-      title: 'Download Started',
-      message: 'ZK Bridge installer is downloading...',
-      color: 'green',
-      icon: <IconCheck size={18} />,
-    })
+    showSuccess('ZK Bridge installer is downloading...', 'Download Started')
   }
 
   return (

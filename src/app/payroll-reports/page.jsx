@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { Container, Title, Paper, Text, Button, Group, Table, Stack, Select, Alert, ActionIcon, Collapse, Badge, Tabs } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconCheck, IconX, IconInfoCircle, IconChevronDown } from '@tabler/icons-react'
+import { IconInfoCircle, IconChevronDown } from '@tabler/icons-react'
+import { showError } from '@/utils/notifications'
 import { DatePickerInput } from '@mantine/dates'
 import { formatUTC12Hour } from '@/utils/dateFormatting'
+import { toYMD } from '@/utils/attendanceUtils'
+import { StatusBadge } from '@/components/shared/StatusBadge'
+import { AttendanceTable } from '@/components/shared/AttendanceTable'
 import { useRouter, usePathname } from 'next/navigation'
 
 export default function PayrollReportsPage() {
@@ -28,7 +31,6 @@ export default function PayrollReportsPage() {
   const [payrollStatusBreakdownOpen, setPayrollStatusBreakdownOpen] = useState(false)
   const [employees, setEmployees] = useState([])
 
-  const toYMD = (d) => new Date(d).toISOString().slice(0, 10)
 
   useEffect(() => {
     fetch('/api/employees')
@@ -74,7 +76,7 @@ export default function PayrollReportsPage() {
         setPayrollDailyRows([])
       }
     } catch (e) {
-      notifications.show({ title: 'Report error', message: e.message || 'Failed to generate report', color: 'red' })
+      showError(e.message || 'Failed to generate report', 'Report error')
     } finally {
       setPayrollLoading(false)
     }
@@ -250,20 +252,7 @@ export default function PayrollReportsPage() {
                     <Table.Td>{d.regularHours ?? 0}</Table.Td>
                     <Table.Td>{d.overtimeHours ?? 0}</Table.Td>
                     <Table.Td>
-                      <Badge
-                        color={
-                          d.status === 'On-Time' ? 'green' :
-                          d.status === 'Late-In' ? 'orange' :
-                          d.status === 'Present' ? 'blue' :
-                          d.status === 'On Leave' ? 'violet' :
-                          d.status === 'Half Day' ? 'yellow' :
-                          d.status === 'Out of Schedule' ? 'grape' :
-                          d.status === 'Absent' ? 'red' : 'gray'
-                        }
-                        variant="light"
-                      >
-                        {d.status || 'Unknown'}
-                      </Badge>
+                      <StatusBadge status={d.status} />
                     </Table.Td>
                   </Table.Tr>
                 ))}

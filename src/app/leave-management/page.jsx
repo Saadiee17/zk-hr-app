@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { Container, Title, Paper, Tabs, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Badge, Divider } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash, IconCheck, IconX, IconEdit, IconPlus, IconCalendar } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconEdit, IconPlus, IconCalendar } from '@tabler/icons-react'
+import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
 import { DatePickerInput } from '@mantine/dates'
+import { LeaveStatusBadge } from '@/components/shared/LeaveStatusBadge'
+import { LeaveRequestForm } from '@/components/shared/LeaveRequestForm'
+import { formatEmployeeName, toYMD } from '@/utils/attendanceUtils'
 
 export default function LeaveManagementPage() {
   const [activeTab, setActiveTab] = useState('types')
@@ -32,12 +35,7 @@ export default function LeaveManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch leave types')
       setLeaveTypes(json.data || [])
     } catch (error) {
-      notifications.show({
-        title: 'Load failed',
-        message: error.message || 'Could not load leave types',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not load leave types', 'Load failed')
     } finally {
       setLeaveTypesLoading(false)
     }
@@ -65,12 +63,7 @@ export default function LeaveManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch leave requests')
       setLeaveRequests(json.data || [])
     } catch (error) {
-      notifications.show({
-        title: 'Load failed',
-        message: error.message || 'Could not load leave requests',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not load leave requests', 'Load failed')
     } finally {
       setLeaveRequestsLoading(false)
     }
@@ -85,12 +78,7 @@ export default function LeaveManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch leave balances')
       setLeaveBalances(json.data || [])
     } catch (error) {
-      notifications.show({
-        title: 'Load failed',
-        message: error.message || 'Could not load leave balances',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not load leave balances', 'Load failed')
     } finally {
       setLeaveBalancesLoading(false)
     }
@@ -134,22 +122,12 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to create leave type')
-      notifications.show({
-        title: 'Leave type created',
-        message: `${values.name} was added`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${values.name} was added`, 'Leave type created')
       setCreateTypeOpen(false)
       typeForm.reset()
       await fetchLeaveTypes()
     } catch (error) {
-      notifications.show({
-        title: 'Create failed',
-        message: error.message || 'Could not create leave type',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not create leave type', 'Create failed')
     }
   }
 
@@ -174,23 +152,13 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to update leave type')
-      notifications.show({
-        title: 'Leave type updated',
-        message: `${values.name} was saved`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${values.name} was saved`, 'Leave type updated')
       setEditTypeOpen(false)
       setEditingType(null)
       typeForm.reset()
       await fetchLeaveTypes()
     } catch (error) {
-      notifications.show({
-        title: 'Update failed',
-        message: error.message || 'Could not update leave type',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not update leave type', 'Update failed')
     }
   }
 
@@ -199,20 +167,10 @@ export default function LeaveManagementPage() {
       const res = await fetch(`/api/hr/leave-types/${type.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to delete leave type')
-      notifications.show({
-        title: 'Leave type deleted',
-        message: `${type.name} was removed`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${type.name} was removed`, 'Leave type deleted')
       await fetchLeaveTypes()
     } catch (error) {
-      notifications.show({
-        title: 'Delete failed',
-        message: error.message || 'Could not delete leave type',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not delete leave type', 'Delete failed')
     }
   }
 
@@ -223,21 +181,6 @@ export default function LeaveManagementPage() {
   const [changeStatusOpen, setChangeStatusOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
 
-  const requestForm = useForm({
-    initialValues: {
-      employee_id: null,
-      leave_type_id: null,
-      start_date: null,
-      end_date: null,
-      reason: '',
-    },
-    validate: {
-      employee_id: (value) => (!value ? 'Employee is required' : null),
-      leave_type_id: (value) => (!value ? 'Leave type is required' : null),
-      start_date: (value) => (!value ? 'Start date is required' : null),
-      end_date: (value) => (!value ? 'End date is required' : null),
-    },
-  })
 
   const approveForm = useForm({
     initialValues: {
@@ -252,37 +195,20 @@ export default function LeaveManagementPage() {
     },
   })
 
-  const handleCreateRequest = async (values) => {
+  const handleCreateRequest = async (formData) => {
     try {
       const res = await fetch('/api/hr/leave-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: values.employee_id,
-          leave_type_id: values.leave_type_id,
-          start_date: values.start_date.toISOString().split('T')[0],
-          end_date: values.end_date.toISOString().split('T')[0],
-          reason: values.reason || null,
-        }),
+        body: JSON.stringify(formData),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to create leave request')
-      notifications.show({
-        title: 'Leave request created',
-        message: 'Request submitted successfully. Schedule exceptions will be created automatically when approved.',
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess('Request submitted successfully. Schedule exceptions will be created automatically when approved.', 'Leave request created')
       setCreateRequestOpen(false)
-      requestForm.reset()
       await fetchLeaveRequests()
     } catch (error) {
-      notifications.show({
-        title: 'Create failed',
-        message: error.message || 'Could not create leave request',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not create leave request', 'Create failed')
     }
   }
 
@@ -335,19 +261,9 @@ export default function LeaveManagementPage() {
           })
         }
         
-        notifications.show({
-          title: 'Request approved',
-          message: `Leave approved. Created ${missingDates.length} schedule exception(s)`,
-          color: 'green',
-          icon: <IconCheck size={18} />,
-        })
+        showSuccess(`Leave approved. Created ${missingDates.length} schedule exception(s)`, 'Request approved')
       } else {
-        notifications.show({
-          title: 'Request approved',
-          message: 'Leave request has been approved',
-          color: 'green',
-          icon: <IconCheck size={18} />,
-        })
+        showSuccess('Leave request has been approved', 'Request approved')
       }
       
       setApproveRequestOpen(false)
@@ -355,12 +271,7 @@ export default function LeaveManagementPage() {
       await fetchLeaveRequests()
       await fetchLeaveBalances()
     } catch (error) {
-      notifications.show({
-        title: 'Approve failed',
-        message: error.message || 'Could not approve request',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not approve request', 'Approve failed')
     }
   }
 
@@ -378,24 +289,14 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to reject request')
-      notifications.show({
-        title: 'Request rejected',
-        message: 'Leave request has been rejected',
-        color: 'orange',
-        icon: <IconX size={18} />,
-      })
+      showError('Leave request has been rejected', 'Request rejected')
       setRejectRequestOpen(false)
       setSelectedRequest(null)
       approveForm.reset()
       await fetchLeaveRequests()
       await fetchLeaveBalances()
     } catch (error) {
-      notifications.show({
-        title: 'Reject failed',
-        message: error.message || 'Could not reject request',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not reject request', 'Reject failed')
     }
   }
 
@@ -450,40 +351,17 @@ export default function LeaveManagementPage() {
         }
       }
       
-      notifications.show({
-        title: 'Status updated',
-        message: `Leave request status changed to ${values.status}`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`Leave request status changed to ${values.status}`, 'Status updated')
       setChangeStatusOpen(false)
       setSelectedRequest(null)
       changeStatusForm.reset()
       await fetchLeaveRequests()
       await fetchLeaveBalances()
     } catch (error) {
-      notifications.show({
-        title: 'Update failed',
-        message: error.message || 'Could not change status',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not change status', 'Update failed')
     }
   }
 
-  const getStatusBadge = (status) => {
-    const colors = {
-      pending: 'yellow',
-      approved: 'green',
-      rejected: 'red',
-      cancelled: 'gray',
-    }
-    return (
-      <Badge color={colors[status] || 'gray'} variant="light">
-        {status?.charAt(0).toUpperCase() + status?.slice(1)}
-      </Badge>
-    )
-  }
 
   // Leave Balances Management
   const [editBalanceOpen, setEditBalanceOpen] = useState(false)
@@ -520,31 +398,16 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to update balance')
-      notifications.show({
-        title: 'Balance updated',
-        message: 'Leave balance was updated',
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess('Leave balance was updated', 'Balance updated')
       setEditBalanceOpen(false)
       setEditingBalance(null)
       balanceForm.reset()
       await fetchLeaveBalances()
     } catch (error) {
-      notifications.show({
-        title: 'Update failed',
-        message: error.message || 'Could not update balance',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not update balance', 'Update failed')
     }
   }
 
-  const leaveTypeOptions = leaveTypes.filter(t => t.is_active).map(t => ({ value: t.id, label: t.name }))
-  const employeeOptions = employees.map(e => ({
-    value: e.id,
-    label: `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id,
-  }))
 
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
@@ -653,7 +516,7 @@ export default function LeaveManagementPage() {
                       return (
                       <Table.Tr key={request.id}>
                         <Table.Td>
-                          {request.employee ? `${request.employee.first_name || ''} ${request.employee.last_name || ''}`.trim() : '-'}
+                          {formatEmployeeName(request.employee)}
                         </Table.Td>
                         <Table.Td>{leaveTypeName}</Table.Td>
                         <Table.Td>{request.start_date}</Table.Td>
@@ -664,7 +527,7 @@ export default function LeaveManagementPage() {
                             {request.reason || '-'}
                           </Text>
                         </Table.Td>
-                        <Table.Td>{getStatusBadge(request.status)}</Table.Td>
+                        <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
                         <Table.Td>
                           {request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}
                         </Table.Td>
@@ -751,7 +614,7 @@ export default function LeaveManagementPage() {
                     {leaveBalances.map((balance) => (
                       <Table.Tr key={balance.id}>
                         <Table.Td>
-                          {balance.employee ? `${balance.employee.first_name || ''} ${balance.employee.last_name || ''}`.trim() : '-'}
+                          {formatEmployeeName(balance.employee)}
                         </Table.Td>
                         <Table.Td>{balance.leave_type?.name || '-'}</Table.Td>
                         <Table.Td>{balance.total_allotted || 0}</Table.Td>
@@ -828,46 +691,19 @@ export default function LeaveManagementPage() {
 
       {/* Create Leave Request Modal */}
       <Modal opened={createRequestOpen} onClose={() => setCreateRequestOpen(false)} title="Create Leave Request">
-        <form onSubmit={requestForm.onSubmit(handleCreateRequest)}>
-          <Stack>
-            <Select
-              label="Employee"
-              placeholder="Select employee"
-              data={employeeOptions}
-              required
-              searchable
-              {...requestForm.getInputProps('employee_id')}
-            />
-            <Select
-              label="Leave Type"
-              placeholder="Select leave type"
-              data={leaveTypeOptions}
-              required
-              {...requestForm.getInputProps('leave_type_id')}
-            />
-            <DatePickerInput
-              label="Start Date"
-              placeholder="Pick start date"
-              required
-              {...requestForm.getInputProps('start_date')}
-            />
-            <DatePickerInput
-              label="End Date"
-              placeholder="Pick end date"
-              required
-              {...requestForm.getInputProps('end_date')}
-            />
-            <TextInput label="Reason" placeholder="Optional" {...requestForm.getInputProps('reason')} />
-            <Text size="sm" c="dimmed">
-              Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period. 
-              You can customize exceptions (half days, custom times) via the HR Management page after approval.
-            </Text>
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setCreateRequestOpen(false)}>Cancel</Button>
-              <Button type="submit">Submit Request</Button>
-            </Group>
-          </Stack>
-        </form>
+        <Stack gap="md">
+          <LeaveRequestForm
+            leaveTypes={leaveTypes}
+            employees={employees}
+            onSubmit={handleCreateRequest}
+            onCancel={() => setCreateRequestOpen(false)}
+            showEmployeeSelect={true}
+          />
+          <Text size="sm" c="dimmed">
+            Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period. 
+            You can customize exceptions (half days, custom times) via the HR Management page after approval.
+          </Text>
+        </Stack>
       </Modal>
 
       {/* Approve Request Modal */}
@@ -918,7 +754,7 @@ export default function LeaveManagementPage() {
               return (
               <>
                 <Text>
-                  <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
+                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
                 </Text>
                 <Text>
                   <strong>Leave Type:</strong> {leaveTypeName}
@@ -955,7 +791,7 @@ export default function LeaveManagementPage() {
               return (
               <>
                 <Text>
-                  <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
+                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
                 </Text>
                 <Text>
                   <strong>Leave Type:</strong> {leaveTypeName}
@@ -1006,7 +842,7 @@ export default function LeaveManagementPage() {
             {editingBalance && (
               <>
                 <Text>
-                  <strong>Employee:</strong> {editingBalance.employee ? `${editingBalance.employee.first_name || ''} ${editingBalance.employee.last_name || ''}`.trim() : '-'}
+                  <strong>Employee:</strong> {formatEmployeeName(editingBalance.employee)}
                 </Text>
                 <Text>
                   <strong>Leave Type:</strong> {editingBalance.leave_type?.name || '-'}

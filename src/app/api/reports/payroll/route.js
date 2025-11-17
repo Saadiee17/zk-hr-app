@@ -32,7 +32,6 @@ export async function GET(req) {
     }
 
     const toName = (e) => `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'
-    const toYMD = (d) => new Date(d).toISOString().slice(0, 10)
 
     // Query daily report per employee and aggregate
     const chunkSize = 8

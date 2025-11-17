@@ -2,17 +2,20 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconEdit, IconCheck, IconX, IconCalendar, IconSearch, IconLockOpen } from '@tabler/icons-react'
+import { IconEdit, IconCalendar, IconSearch, IconLockOpen } from '@tabler/icons-react'
+import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
 import { Calendar, TimeInput } from '@mantine/dates'
 import Link from 'next/link'
 import { IconSelector } from '@tabler/icons-react'
+import { toYMD } from '@/utils/attendanceUtils'
+import { PRIVILEGE_OPTIONS } from '@/utils/employeeUtils'
+import { useDepartmentOptions } from '@/hooks/useDepartmentOptions'
 
 export default function EmployeeManagementPage() {
   const [employees, setEmployees] = useState([])
   const [empLoading, setEmpLoading] = useState(false)
-  const [deptOptions, setDeptOptions] = useState([])
+  const { options: deptOptions } = useDepartmentOptions()
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignEmp, setAssignEmp] = useState(null)
   const [assignSaving, setAssignSaving] = useState(false)
@@ -58,28 +61,12 @@ export default function EmployeeManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch employees')
       setEmployees(json.data || [])
     } catch (error) {
-      notifications.show({
-        title: 'Load employees failed',
-        message: error.message || 'Could not load employees',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not load employees', 'Load employees failed')
     } finally {
       setEmpLoading(false)
     }
   }
 
-  const fetchDeptOptions = async () => {
-    try {
-      const res = await fetch('/api/hr/departments')
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch departments')
-      const opts = (json.data || []).map((d) => ({ value: d.id, label: d.name }))
-      setDeptOptions(opts)
-    } catch (error) {
-      setDeptOptions([])
-    }
-  }
 
   const fetchTimeZones = async () => {
     try {
@@ -94,7 +81,6 @@ export default function EmployeeManagementPage() {
 
   useEffect(() => {
     fetchEmployees()
-    fetchDeptOptions()
     fetchTimeZones()
   }, [])
 
@@ -176,7 +162,6 @@ export default function EmployeeManagementPage() {
     })
   }, [filteredEmployees, empSort])
 
-  const toYMD = (d) => new Date(d).toISOString().slice(0, 10)
 
   const fetchExceptions = async (employeeId) => {
     if (!employeeId) return
@@ -186,7 +171,7 @@ export default function EmployeeManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch exceptions')
       setExceptions(json.data || [])
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     }
   }
 
@@ -203,24 +188,14 @@ export default function EmployeeManagementPage() {
       const data = await res.json()
       
       if (res.ok) {
-        notifications.show({
-          title: 'Success',
-          message: 'Password reset successfully. Employee will be prompted to set a new password on next login.',
-          color: 'green',
-          icon: <IconCheck size={18} />,
-        })
+        showSuccess('Password reset successfully. Employee will be prompted to set a new password on next login.')
         setResetPasswordModal(false)
         setResetPasswordEmployee(null)
       } else {
         throw new Error(data.error || 'Failed to reset password')
       }
     } catch (error) {
-      notifications.show({
-        title: 'Error',
-        message: error.message,
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message)
     }
   }
 
@@ -232,7 +207,7 @@ export default function EmployeeManagementPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch leave requests')
       setLeaveRequests(json.data || [])
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     }
   }
 
@@ -274,12 +249,12 @@ export default function EmployeeManagementPage() {
         const details = json.details ? ` (${json.details})` : ''
         throw new Error(errorMsg + details)
       }
-      notifications.show({ title: 'Success', message: 'Leave request created and approved.', color: 'green' })
+      showSuccess('Leave request created and approved.')
       setShowLeaveRequestForm(false)
       setLeaveRequestForm({ leave_type: 'casual_leave', reason: '' })
       await fetchLeaveRequests(assignEmp.id)
     } catch (error) {
-      notifications.show({ title: 'Error', message: error.message, color: 'red' })
+      showError(error.message)
     } finally {
       setExceptionSaving(false)
     }
@@ -313,10 +288,10 @@ export default function EmployeeManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to save exception')
-      notifications.show({ title: 'Success', message: 'Exception saved.', color: 'green' })
+      showSuccess('Exception saved.')
       await fetchExceptions(assignEmp.id)
     } catch (error) {
-      notifications.show({ title: 'Save Failed', message: error.message, color: 'red' })
+      showError(error.message, 'Save Failed')
     } finally {
       setExceptionSaving(false)
     }
@@ -338,12 +313,12 @@ export default function EmployeeManagementPage() {
         const json = await res.json().catch(()=>({}))
         throw new Error(json.error || 'Failed to delete exception')
       }
-      notifications.show({ title: 'Success', message: 'Exception cleared.', color: 'green' })
+      showSuccess('Exception cleared.')
       setCurrentException(null)
       await fetchExceptions(assignEmp.id)
       handleDateSelect(selectedDate)
     } catch (error) {
-      notifications.show({ title: 'Delete Failed', message: error.message, color: 'red' })
+      showError(error.message, 'Delete Failed')
     } finally {
       setExceptionSaving(false)
     }
@@ -508,21 +483,11 @@ export default function EmployeeManagementPage() {
               })
               const json = await res.json()
               if (!res.ok) throw new Error(json.error || 'Failed to save employee')
-              notifications.show({
-                title: 'Employee updated',
-                message: 'Changes saved successfully',
-                color: 'green',
-                icon: <IconCheck size={18} />,
-              })
+              showSuccess('Changes saved successfully', 'Employee updated')
               setAssignOpen(false)
               await fetchEmployees()
             } catch (error) {
-              notifications.show({
-                title: 'Update failed',
-                message: error.message || 'Could not update employee',
-                color: 'red',
-                icon: <IconX size={18} />,
-              })
+              showError(error.message || 'Could not update employee', 'Update failed')
             } finally {
               setAssignSaving(false)
             }
@@ -545,12 +510,7 @@ export default function EmployeeManagementPage() {
               />
               <Select
                 label="Privilege"
-                data={[
-                  { value: '0', label: 'Employee' },
-                  { value: '1', label: 'Registrar' },
-                  { value: '2', label: 'Administrator' },
-                  { value: '3', label: 'Super Admin' },
-                ]}
+                data={PRIVILEGE_OPTIONS}
                 {...editForm.getInputProps('privilege')}
               />
               <Switch

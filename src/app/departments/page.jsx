@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Container, Title, Paper, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Select } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconPencil, IconTrash, IconCheck, IconX } from '@tabler/icons-react'
+import { IconPencil, IconTrash } from '@tabler/icons-react'
+import { showSuccess, showError } from '@/utils/notifications'
 
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState([])
@@ -30,12 +30,7 @@ export default function DepartmentsPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to fetch departments')
       setDepartments(json.data || [])
     } catch (error) {
-      notifications.show({
-        title: 'Load failed',
-        message: error.message || 'Could not load departments',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not load departments', 'Load failed')
     } finally {
       setLoading(false)
     }
@@ -80,21 +75,11 @@ export default function DepartmentsPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to create department')
-      notifications.show({
-        title: 'Department created',
-        message: `${createName.trim()} was added`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${createName.trim()} was added`, 'Department created')
       resetCreateForm()
       await fetchDepartments()
     } catch (error) {
-      notifications.show({
-        title: 'Create failed',
-        message: error.message || 'Could not create department',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not create department', 'Create failed')
     } finally {
       setCreating(false)
     }
@@ -122,21 +107,11 @@ export default function DepartmentsPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to update department')
-      notifications.show({
-        title: 'Department updated',
-        message: `${editName.trim()} was saved`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${editName.trim()} was saved`, 'Department updated')
       setEditOpen(false)
       await fetchDepartments()
     } catch (error) {
-      notifications.show({
-        title: 'Update failed',
-        message: error.message || 'Could not update department',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not update department', 'Update failed')
     } finally {
       setSavingEdit(false)
     }
@@ -147,20 +122,10 @@ export default function DepartmentsPage() {
       const res = await fetch(`/api/hr/departments/${dept.id}`, { method: 'DELETE' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Failed to delete department')
-      notifications.show({
-        title: 'Department deleted',
-        message: `${dept.name} was removed`,
-        color: 'green',
-        icon: <IconCheck size={18} />,
-      })
+      showSuccess(`${dept.name} was removed`, 'Department deleted')
       await fetchDepartments()
     } catch (error) {
-      notifications.show({
-        title: 'Delete failed',
-        message: error.message || 'Could not delete department',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Could not delete department', 'Delete failed')
     }
   }
 
@@ -319,10 +284,10 @@ export default function DepartmentsPage() {
                   })
                   const json = await res.json()
                   if (!res.ok) throw new Error(json.error || 'Failed to assign schedule')
-                  notifications.show({ title: 'Schedule assigned', message: 'Department schedule updated', color: 'green', icon: <IconCheck size={18} /> })
+                  showSuccess('Department schedule updated', 'Schedule assigned')
                   setScheduleOpen(false)
                 } catch (error) {
-                  notifications.show({ title: 'Schedule failed', message: error.message || 'Could not assign schedule', color: 'red', icon: <IconX size={18} /> })
+                  showError(error.message || 'Could not assign schedule', 'Schedule failed')
                 } finally {
                   setScheduleSaving(false)
                 }
@@ -334,6 +299,7 @@ export default function DepartmentsPage() {
     </Container>
   )
 }
+
 
 
 

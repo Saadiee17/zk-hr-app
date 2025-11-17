@@ -22,8 +22,8 @@ import {
   Tabs,
   TextInput
 } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconRefresh, IconCheck, IconX, IconChevronDown, IconChevronUp, IconSearch } from '@tabler/icons-react'
+import { IconRefresh, IconChevronDown, IconChevronUp, IconSearch } from '@tabler/icons-react'
+import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
@@ -126,12 +126,7 @@ function Dashboard() {
       }
     } catch (error) {
       console.error('[Logs] Error:', error)
-      notifications.show({
-        title: 'Error',
-        message: error.message || 'Failed to fetch logs',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Failed to fetch logs')
     } finally {
       setLoading(false)
     }
@@ -148,16 +143,7 @@ function Dashboard() {
       syncingRef.current = true
       setSyncing(true)
       
-      if (!silent) {
-        notifications.show({
-          id: 'syncing',
-          loading: true,
-          title: 'Syncing data',
-          message: 'Fetching attendance from device...',
-          autoClose: false,
-          withCloseButton: false,
-        })
-      }
+      const notificationId = !silent ? showLoading('Fetching attendance from device...', 'Syncing data', { id: 'syncing' }) : null
 
       const response = await fetch('/api/sync', { method: 'POST' })
       const result = await response.json()
@@ -168,15 +154,8 @@ function Dashboard() {
 
       setLastSyncTime(new Date())
       
-      if (!silent) {
-        notifications.update({
-          id: 'syncing',
-          color: 'teal',
-          title: 'Success',
-          message: result.message || 'Data synced successfully',
-        icon: <IconCheck size={18} />,
-          autoClose: 2000,
-      })
+      if (!silent && notificationId) {
+        updateNotification('syncing', result.message || 'Data synced successfully', 'Success', 'success', { autoClose: 2000 })
       }
 
       // Refresh logs after successful sync
@@ -189,15 +168,8 @@ function Dashboard() {
       await fetchMetrics()
     } catch (error) {
       console.error('[Sync] Error:', error)
-      if (!silent) {
-        notifications.update({
-          id: 'syncing',
-        color: 'red',
-          title: 'Sync Error',
-          message: error.message || 'Failed to sync data',
-        icon: <IconX size={18} />,
-          autoClose: 4000,
-      })
+      if (!silent && notificationId) {
+        updateNotification('syncing', error.message || 'Failed to sync data', 'Sync Error', 'error', { autoClose: 4000 })
       }
     } finally {
       setSyncing(false)
@@ -257,59 +229,101 @@ function Dashboard() {
       }
       const employees = empResult.data || []
 
-      // Fetch reports for all employees (yesterday and today for overnight shifts)
-      const results = await Promise.all(
-        employees.map(async (e) => {
-          try {
-            const reportResponse = await fetch(
-              `/api/reports/daily-work-time?employee_id=${e.id}&start_date=${pakistanYesterdayStr}&end_date=${pakistanDateStr}`
-            )
-            const reportResult = await reportResponse.json()
-            
-            if (!reportResponse.ok) {
-              console.warn(`[Metrics] Failed to fetch report for ${e.first_name} ${e.last_name}:`, reportResult.error)
-              return null
-            }
+      // Use batch endpoint for fast retrieval (cached) - fetch both dates in parallel!
+      console.log(`[Metrics] Fetching batch data for ${pakistanDateStr} and ${pakistanYesterdayStr} in parallel`)
+      const [batchResponse, yesterdayBatchResponse] = await Promise.all([
+        fetch(`/api/reports/daily-work-time/batch?date=${pakistanDateStr}`),
+        fetch(`/api/reports/daily-work-time/batch?date=${pakistanYesterdayStr}`)
+      ])
+      
+      const [batchResult, yesterdayBatchResult] = await Promise.all([
+        batchResponse.json(),
+        yesterdayBatchResponse.json()
+      ])
+      
+      if (!batchResponse.ok) {
+        throw new Error(batchResult.error || 'Failed to fetch batch attendance data')
+      }
+      
+      if (!yesterdayBatchResponse.ok) {
+        throw new Error(yesterdayBatchResult.error || 'Failed to fetch yesterday batch attendance data')
+      }
 
-            const reports = reportResult.data || []
-            const todayRow = reports.find(r => r.date === pakistanDateStr)
-            const yesterdayRow = reports.find(r => r.date === pakistanYesterdayStr)
-            
-            const employeeName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'
-            const departmentName = e.department?.name || 'No Department'
-            const scheduleInfo = e.primary_schedule || 'Not Assigned'
+      const batchData = batchResult.data || []
+      const batchMap = new Map(batchData.map(item => [item.employee_id, item]))
 
-            // Status logic: Use effective working day's data
-            // Note: If we're before working day start, effectiveDateStr is yesterday's date
-            // so todayRow will actually contain yesterday's data
-            let status = 'Absent'
-            let relevantRow = null
-            
-            if (todayRow && todayRow.status) {
-              // Use the effective date's status
-              status = todayRow.status
-              relevantRow = todayRow
-            } else if (yesterdayRow && yesterdayRow.status === 'Punch Out Missing') {
-              // If someone from the previous day hasn't clocked out, show that
-              status = 'Punch Out Missing'
-              relevantRow = yesterdayRow
-            }
+      const yesterdayBatchData = yesterdayBatchResult.data || []
+      const yesterdayBatchMap = new Map(yesterdayBatchData.map(item => [item.employee_id, item]))
+      
+      console.log(`[Metrics] Received ${batchData.length} today, ${yesterdayBatchData.length} yesterday`)
 
-            return {
-              employee: e,
-              reportData: relevantRow || todayRow,
-              yesterdayReportData: yesterdayRow,
-              employeeName,
-              departmentName,
-              scheduleInfo,
-              status: status
-            }
-          } catch (err) {
-            console.error(`[Metrics] Error processing ${e.first_name} ${e.last_name}:`, err)
-            return null
+      // Build results array matching the original structure
+      const results = employees.map((e) => {
+        const todayRow = batchMap.get(e.id)
+        const yesterdayRow = yesterdayBatchMap.get(e.id)
+        
+        const employeeName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'
+        const departmentName = e.department?.name || 'No Department'
+        const scheduleInfo = e.primary_schedule || 'Not Assigned'
+
+        // Status logic: Use effective working day's data
+        // Note: If we're before working day start, effectiveDateStr is yesterday's date
+        // so todayRow will actually contain yesterday's data
+        let status = 'Absent'
+        let relevantRow = null
+        
+        if (todayRow && todayRow.status) {
+          // Use the effective date's status
+          status = todayRow.status
+          relevantRow = {
+            date: todayRow.date,
+            inTime: todayRow.inTime,
+            outTime: todayRow.outTime,
+            durationHours: todayRow.durationHours,
+            regularHours: todayRow.regularHours,
+            overtimeHours: todayRow.overtimeHours,
+            status: todayRow.status,
           }
-        })
-      )
+        } else if (yesterdayRow && yesterdayRow.status === 'Punch Out Missing') {
+          // If someone from the previous day hasn't clocked out, show that
+          status = 'Punch Out Missing'
+          relevantRow = {
+            date: yesterdayRow.date,
+            inTime: yesterdayRow.inTime,
+            outTime: yesterdayRow.outTime,
+            durationHours: yesterdayRow.durationHours,
+            regularHours: yesterdayRow.regularHours,
+            overtimeHours: yesterdayRow.overtimeHours,
+            status: yesterdayRow.status,
+          }
+        }
+
+        return {
+          employee: e,
+          reportData: relevantRow || (todayRow ? {
+            date: todayRow.date,
+            inTime: todayRow.inTime,
+            outTime: todayRow.outTime,
+            durationHours: todayRow.durationHours,
+            regularHours: todayRow.regularHours,
+            overtimeHours: todayRow.overtimeHours,
+            status: todayRow.status,
+          } : null),
+          yesterdayReportData: yesterdayRow ? {
+            date: yesterdayRow.date,
+            inTime: yesterdayRow.inTime,
+            outTime: yesterdayRow.outTime,
+            durationHours: yesterdayRow.durationHours,
+            regularHours: yesterdayRow.regularHours,
+            overtimeHours: yesterdayRow.overtimeHours,
+            status: yesterdayRow.status,
+          } : null,
+          employeeName,
+          departmentName,
+          scheduleInfo,
+          status: status
+        }
+      })
 
       // Calculate metrics using API statuses (single source of truth!)
       let presentCount = 0
@@ -439,12 +453,7 @@ function Dashboard() {
     } catch (e) {
       console.error('[Metrics] Error:', e)
       if (!background) {
-        notifications.show({ 
-          title: 'Metrics error', 
-          message: e.message || 'Failed to compute overview', 
-          color: 'red', 
-          icon: <IconX size={18} /> 
-        })
+        showError(e.message || 'Failed to compute overview', 'Metrics error')
       }
     } finally {
       setLoadingMetrics(false)

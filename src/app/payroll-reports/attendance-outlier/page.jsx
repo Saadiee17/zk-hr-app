@@ -2,37 +2,11 @@
 
 import { useEffect, useState, Fragment } from 'react'
 import { Container, Title, Paper, Group, Text, Table, LoadingOverlay, Stack, Badge, ActionIcon, Card, Grid, Divider, Select, Tabs } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
+import { showError } from '@/utils/notifications'
 import { formatUTC12Hour, formatUTC12HourTime } from '@/utils/dateFormatting'
+import { formatHoursMinutes, formatDateWithDay } from '@/utils/attendanceUtils'
 import { useRouter } from 'next/navigation'
-
-// Helper function to convert decimal hours to "Xh Ym" format
-const formatHoursMinutes = (decimalHours) => {
-  if (!decimalHours || decimalHours === 0) return '0h'
-  const hours = Math.floor(decimalHours)
-  const minutes = Math.round((decimalHours - hours) * 60)
-  if (minutes === 0) {
-    return `${hours}h`
-  }
-  return `${hours}h ${minutes}m`
-}
-
-// Helper to format date with day name
-const formatDateWithDay = (dateStr) => {
-  try {
-    const date = new Date(dateStr + 'T00:00:00Z')
-    const pakistaniDate = new Date(date.getTime() + 5 * 60 * 60 * 1000)
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const dayName = dayNames[pakistaniDate.getUTCDay()]
-    const month = String(pakistaniDate.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(pakistaniDate.getUTCDate()).padStart(2, '0')
-    const year = pakistaniDate.getUTCFullYear()
-    return { dayName, dateStr: `${month}/${day}/${year}` }
-  } catch (e) {
-    return { dayName: '', dateStr: dateStr }
-  }
-}
 
 export default function AttendanceOutlierPage() {
   const router = useRouter()
@@ -103,66 +77,82 @@ export default function AttendanceOutlierPage() {
       if (!employeesRes.ok) throw new Error(employeesJson.error || 'Failed to fetch employees')
       const employees = employeesJson.data || []
 
-      // Process employees in chunks to avoid overwhelming the API
-      const chunkSize = 5
-      const chunks = []
-      for (let i = 0; i < employees.length; i += chunkSize) {
-        chunks.push(employees.slice(i, i + chunkSize))
+      // Generate all dates in the range
+      const dates = []
+      const startDate = new Date(start)
+      const endDate = new Date(end)
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        dates.push(d.toISOString().slice(0, 10))
       }
 
+      console.log(`[Outlier] Fetching data for ${dates.length} dates using batch endpoint (cached)`)
+
+      // Fetch data for all dates using batch endpoint (much faster with cache!)
+      const datePromises = dates.map(async (dateStr) => {
+        try {
+          const batchRes = await fetch(`/api/reports/daily-work-time/batch?date=${dateStr}`)
+          const batchJson = await batchRes.json()
+          if (!batchRes.ok) {
+            console.warn(`[Outlier] Failed to fetch batch for ${dateStr}:`, batchJson.error)
+            return { date: dateStr, data: [] }
+          }
+          return { date: dateStr, data: batchJson.data || [] }
+        } catch (error) {
+          console.error(`[Outlier] Error fetching batch for ${dateStr}:`, error)
+          return { date: dateStr, data: [] }
+        }
+      })
+
+      const dateResults = await Promise.all(datePromises)
+      console.log(`[Outlier] Fetched data for ${dateResults.length} dates`)
+
+      // Build a map of employee_id -> array of daily reports
+      const employeeReportsMap = new Map()
+      
+      dateResults.forEach(({ date, data }) => {
+        data.forEach((dayData) => {
+          const empId = dayData.employee_id
+          if (!employeeReportsMap.has(empId)) {
+            employeeReportsMap.set(empId, [])
+          }
+          employeeReportsMap.get(empId).push({
+            ...dayData,
+            date: date
+          })
+        })
+      })
+
+      // Process each employee's reports
       const results = []
       
-      for (const chunk of chunks) {
-        const promises = chunk.map(async (employee) => {
-          try {
-            const qs = new URLSearchParams({
-              employee_id: employee.id,
-              start_date: start,
-              end_date: end
-            })
-            const reportRes = await fetch(`/api/reports/daily-work-time?${qs.toString()}`)
-            const reportJson = await reportRes.json()
-            
-            if (!reportRes.ok) {
-              console.warn(`Failed to fetch report for ${employee.first_name} ${employee.last_name}`)
-              return null
-            }
+      employees.forEach((employee) => {
+        const dailyReports = employeeReportsMap.get(employee.id) || []
+        
+        // Filter for Late-In days
+        const lateDays = dailyReports.filter(day => day.status === 'Late-In')
+        
+        if (lateDays.length === 0) {
+          return // Skip employees with no late arrivals
+        }
 
-            const dailyReports = reportJson.data || []
-            
-            // Filter for Late-In days
-            const lateDays = dailyReports.filter(day => day.status === 'Late-In')
-            
-            if (lateDays.length === 0) {
-              return null // Skip employees with no late arrivals
-            }
+        // Calculate total days worked (exclude Absent, On Leave)
+        const daysWorked = dailyReports.filter(day => {
+          const status = day.status || ''
+          return status !== 'Absent' && status !== 'On Leave' && status !== ''
+        }).length
 
-            // Calculate total days worked (exclude Absent, On Leave)
-            const daysWorked = dailyReports.filter(day => {
-              const status = day.status || ''
-              return status !== 'Absent' && status !== 'On Leave' && status !== ''
-            }).length
+        const lateCount = lateDays.length
+        const latePercentage = daysWorked > 0 ? (lateCount / daysWorked) * 100 : 0
 
-            const lateCount = lateDays.length
-            const latePercentage = daysWorked > 0 ? (lateCount / daysWorked) * 100 : 0
-
-            return {
-              employee_id: employee.id,
-              employee_name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || employee.employee_id || 'Unknown',
-              department: employee.department?.name || 'No Department',
-              total_days_worked: daysWorked,
-              late_count: lateCount,
-              late_percentage: Math.round(latePercentage * 100) / 100
-            }
-          } catch (error) {
-            console.error(`Error processing employee ${employee.id}:`, error)
-            return null
-          }
+        results.push({
+          employee_id: employee.id,
+          employee_name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || employee.employee_id || 'Unknown',
+          department: employee.department?.name || 'No Department',
+          total_days_worked: daysWorked,
+          late_count: lateCount,
+          late_percentage: Math.round(latePercentage * 100) / 100
         })
-
-        const chunkResults = await Promise.all(promises)
-        results.push(...chunkResults.filter(r => r !== null))
-      }
+      })
 
       // Sort by late percentage (descending), then by late count (descending)
       results.sort((a, b) => {
@@ -175,12 +165,7 @@ export default function AttendanceOutlierPage() {
       setLateArrivalData(results)
     } catch (error) {
       console.error('[Attendance Outlier] Error:', error)
-      notifications.show({
-        title: 'Error',
-        message: error.message || 'Failed to generate attendance outlier report',
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(error.message || 'Failed to generate attendance outlier report')
     } finally {
       setLateArrivalLoading(false)
     }
@@ -215,12 +200,7 @@ export default function AttendanceOutlierPage() {
       })
     } catch (error) {
       console.error(`Error fetching late details for employee ${employeeId}:`, error)
-      notifications.show({
-        title: 'Error',
-        message: `Failed to fetch details for employee: ${error.message}`,
-        color: 'red',
-        icon: <IconX size={18} />,
-      })
+      showError(`Failed to fetch details for employee: ${error.message}`)
     }
   }
 
