@@ -13,7 +13,7 @@ import {
   Alert,
   Code,
 } from '@mantine/core'
-import { IconDownload, IconInfoCircle } from '@tabler/icons-react'
+import { IconDownload, IconInfoCircle, IconCheck } from '@tabler/icons-react'
 import { showSuccess } from '@/utils/notifications'
 import { AdminAccessBanner } from '@/components/AdminAccessBanner'
 
