@@ -25,9 +25,11 @@ import {
 import { IconRefresh, IconChevronDown, IconChevronUp, IconSearch } from '@tabler/icons-react'
 import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
+import { formatHoursMinutes } from '@/utils/attendanceUtils'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppShellWrapper } from '@/components/AppShellWrapper'
+import { MetricCard } from '@/components/shared/MetricCard'
 
 function Dashboard() {
   // State for logs table
@@ -44,7 +46,15 @@ function Dashboard() {
   const syncingRef = useRef(false)
   
   // State for metrics
-  const [metrics, setMetrics] = useState({ present: 0, late: 0, absent: 0, onTime: 0 })
+  const [metrics, setMetrics] = useState({ 
+    present: 0, 
+    late: 0, 
+    absent: 0, 
+    onTime: 0,
+    totalOvertimeHours: 0,
+    totalWorkingHours: 0,
+    punchOutMissing: 0
+  })
   const [metricsLoading, setLoadingMetrics] = useState(false)
   const [totalEmployees, setTotalEmployees] = useState(0)
   const [lateEmployees, setLateEmployees] = useState([])
@@ -52,12 +62,14 @@ function Dashboard() {
   const [onTimeEmployees, setOnTimeEmployees] = useState([])
   const [presentEmployees, setPresentEmployees] = useState([])
   const [departmentEmployees, setDepartmentEmployees] = useState([])
+  const [punchOutMissingEmployees, setPunchOutMissingEmployees] = useState([])
   
   // State for modals
   const [lateModalOpen, setLateModalOpen] = useState(false)
   const [absentModalOpen, setAbsentModalOpen] = useState(false)
   const [onTimeModalOpen, setOnTimeModalOpen] = useState(false)
   const [presentModalOpen, setPresentModalOpen] = useState(false)
+  const [punchOutMissingModalOpen, setPunchOutMissingModalOpen] = useState(false)
   
   // State for department collapse
   const [expandedDepartments, setExpandedDepartments] = useState({})
@@ -404,12 +416,60 @@ function Dashboard() {
         // Ignore "Shift Not Started" from metrics
       }
 
+      // Calculate additional metrics using the same results array
+      let totalOvertimeHours = 0
+      let totalWorkingHours = 0
+      let punchOutMissingCount = 0
+      const punchOutMissingList = []
+
+      for (const result of results) {
+        if (!result) continue
+        
+        const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
+        
+        // Sum overtime hours (only for employees who worked)
+        if (r && r.overtimeHours) {
+          totalOvertimeHours += Number(r.overtimeHours) || 0
+        }
+        
+        // Sum total working hours (regular + overtime = durationHours)
+        if (r && r.durationHours) {
+          totalWorkingHours += Number(r.durationHours) || 0
+        }
+        
+        // Count and list punch out missing employees
+        if (status === 'Punch Out Missing') {
+          punchOutMissingCount++
+          punchOutMissingList.push({
+            id: e.id,
+            name: employeeName,
+            department: departmentName,
+            schedule: scheduleInfo,
+            inTime: r?.inTime,
+            outTime: null
+          })
+        }
+      }
+
+      // Round to 2 decimal places
+      totalOvertimeHours = Math.round(totalOvertimeHours * 100) / 100
+      totalWorkingHours = Math.round(totalWorkingHours * 100) / 100
+
       setTotalEmployees(employees.length)
-      setMetrics({ present: presentCount, late: lateCount, absent: absentCount, onTime: onTimeCount })
+      setMetrics({ 
+        present: presentCount, 
+        late: lateCount, 
+        absent: absentCount, 
+        onTime: onTimeCount,
+        totalOvertimeHours,
+        totalWorkingHours,
+        punchOutMissing: punchOutMissingCount
+      })
       setLateEmployees(lateList)
       setAbsentEmployees(absentList)
       setOnTimeEmployees(onTimeList)
       setPresentEmployees(presentList)
+      setPunchOutMissingEmployees(punchOutMissingList)
       
       // Build department-wise employee list - SIMPLIFIED!
       // ✅ REUSE the same API results - single source of truth!
@@ -654,149 +714,91 @@ function Dashboard() {
         </Button>
       </Group>
 
-        {/* Metrics Grid - More Compact */}
+        {/* Metrics Grid - Using Reusable MetricCard Component */}
         <Grid gutter="md">
           <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <Card 
-              shadow="sm" 
-              padding="md" 
-              radius="lg" 
-              withBorder 
-              style={{ 
-                cursor: 'pointer', 
-                transition: 'all 0.2s',
-                borderLeft: '4px solid var(--mantine-color-blue-6)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
+            <MetricCard
+              value={metrics.present}
+              label="Present"
+              description="Working today"
+              color="blue"
+              clickable
               onClick={() => setPresentModalOpen(true)}
-            >
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Present</Text>
-                <Text size={32} fw={700} c="blue" lh={1}>{metrics.present}</Text>
-                <Text size="xs" c="dimmed">Working today</Text>
-              </Stack>
-            </Card>
+            />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <Card 
-              shadow="sm" 
-              padding="md" 
-              radius="lg" 
-              withBorder 
-              style={{ 
-                cursor: 'pointer', 
-                transition: 'all 0.2s',
-                borderLeft: '4px solid var(--mantine-color-green-6)'
-              }}
+            <MetricCard
+              value={metrics.onTime}
+              label="On-Time"
+              description="Punctual"
+              color="green"
+              clickable
               onClick={() => setOnTimeModalOpen(true)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">On-Time</Text>
-                <Text size={32} fw={700} c="green" lh={1}>{metrics.onTime}</Text>
-                <Text size="xs" c="dimmed">Punctual</Text>
-              </Stack>
-            </Card>
+            />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <Card 
-              shadow="sm" 
-              padding="md" 
-              radius="lg" 
-              withBorder 
-              style={{ 
-                cursor: 'pointer', 
-                transition: 'all 0.2s',
-                borderLeft: '4px solid var(--mantine-color-orange-6)'
-              }}
+            <MetricCard
+              value={metrics.late}
+              label="Late-In"
+              description="Delayed arrival"
+              color="orange"
+              clickable
               onClick={() => setLateModalOpen(true)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Late-In</Text>
-                <Text size={32} fw={700} c="orange" lh={1}>{metrics.late}</Text>
-                <Text size="xs" c="dimmed">Delayed arrival</Text>
-              </Stack>
-            </Card>
+            />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <Card 
-              shadow="sm" 
-              padding="md" 
-              radius="lg" 
-              withBorder 
-              style={{ 
-                cursor: 'pointer', 
-                transition: 'all 0.2s',
-                borderLeft: '4px solid var(--mantine-color-red-6)'
-              }}
+            <MetricCard
+              value={metrics.absent}
+              label="Absent"
+              description="Not present"
+              color="red"
+              clickable
               onClick={() => setAbsentModalOpen(true)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Absent</Text>
-                <Text size={32} fw={700} c="red" lh={1}>{metrics.absent}</Text>
-                <Text size="xs" c="dimmed">Not present</Text>
-              </Stack>
-            </Card>
+            />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <Card 
-              shadow="sm" 
-              padding="md" 
-              radius="lg" 
-              withBorder 
-              style={{ 
-                transition: 'all 0.2s',
-                borderLeft: '4px solid var(--mantine-color-gray-6)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Total</Text>
-                <Text size={32} fw={700} c="gray" lh={1}>{totalEmployees}</Text>
-                <Text size="xs" c="dimmed">All employees</Text>
-              </Stack>
-            </Card>
+            <MetricCard
+              value={totalEmployees}
+              label="Total"
+              description="All employees"
+              color="gray"
+            />
+          </Grid.Col>
+
+          {/* Additional Metrics */}
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <MetricCard
+              value={formatHoursMinutes(metrics.totalOvertimeHours || 0)}
+              label="Overtime"
+              description="Total overtime hours"
+              color="violet"
+              size="md"
+            />
+          </Grid.Col>
+
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <MetricCard
+              value={formatHoursMinutes(metrics.totalWorkingHours || 0)}
+              label="Working Hours"
+              description="Total hours worked"
+              color="teal"
+              size="md"
+            />
+          </Grid.Col>
+
+          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+            <MetricCard
+              value={metrics.punchOutMissing || 0}
+              label="Punch Out Missing"
+              description="Still working"
+              color="yellow"
+              clickable
+              onClick={() => setPunchOutMissingModalOpen(true)}
+            />
           </Grid.Col>
         </Grid>
 
@@ -1258,6 +1260,64 @@ function Dashboard() {
             </Paper>
           </Tabs.Panel>
         </Tabs>
+
+        {/* Punch Out Missing Modal */}
+        <Modal
+          opened={punchOutMissingModalOpen}
+          onClose={() => setPunchOutMissingModalOpen(false)}
+          title={
+            <Text fw={600} size="lg">Employees with Missing Punch Out</Text>
+          }
+          size="xl"
+          styles={{
+            body: { padding: 'var(--mantine-spacing-lg)' },
+            content: { maxWidth: '1000px' }
+          }}
+        >
+          {punchOutMissingEmployees.length === 0 ? (
+            <Text c="dimmed" ta="center" py="xl" size="lg">No employees with missing punch out</Text>
+          ) : (
+            <Table 
+              striped 
+              highlightOnHover
+              withTableBorder
+              withColumnBorders={false}
+            >
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                  <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                  <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                  <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {punchOutMissingEmployees.map((emp) => (
+                  <Table.Tr key={emp.id}>
+                    <Table.Td>
+                      <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                        <Text component="span" className="employee-name-link" fw={500}>
+                          {emp.name}
+                        </Text>
+                      </Link>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{emp.department}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{emp.schedule}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" ff="monospace">
+                        {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          )}
+        </Modal>
       </Stack>
     </Box>
   )
