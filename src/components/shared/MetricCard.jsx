@@ -1,6 +1,6 @@
 'use client'
 
-import { Card, Stack, Text } from '@mantine/core'
+import { Card, Stack, Text, Group } from '@mantine/core'
 
 /**
  * MetricCard - Reusable metric card component for dashboard
@@ -13,54 +13,69 @@ import { Card, Stack, Text } from '@mantine/core'
  * @param {Function} props.onClick - Click handler (optional)
  * @param {string} props.size - Size of the value text ('sm' | 'md' | 'lg', default: 'lg')
  */
-export function MetricCard({ 
-  value, 
-  label, 
-  description, 
+export function MetricCard({
+  value,
+  label,
+  description,
   color = 'blue',
   clickable = false,
   onClick,
-  size = 'lg'
+  size = 'lg',
+  icon: Icon
 }) {
   const sizeMap = {
     sm: 24,
-    md: 28,
-    lg: 32
+    md: 32,
+    lg: 42
   }
 
-  const fontSize = sizeMap[size] || 32
+  const fontSize = sizeMap[size] || 42
   const isClickable = clickable || !!onClick
 
   return (
-    <Card 
-      shadow="sm" 
-      padding="md" 
-      radius="lg" 
-      withBorder 
-      style={{ 
-        cursor: isClickable ? 'pointer' : 'default', 
-        transition: 'all 0.2s',
-        borderLeft: `4px solid var(--mantine-color-${color}-6)`
+    <Card
+      padding="lg"
+      radius="lg"
+      withBorder={false}
+      style={{
+        cursor: isClickable ? 'pointer' : 'default',
+        transition: 'all 0.3s ease',
+        background: 'rgba(255, 255, 255, 0.7)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255, 255, 255, 0.3)',
+        boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.05)',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between'
       }}
       onMouseEnter={(e) => {
         if (isClickable) {
           e.currentTarget.style.transform = 'translateY(-4px)'
-          e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+          e.currentTarget.style.boxShadow = '0 20px 40px -4px rgba(0, 0, 0, 0.1)'
         }
       }}
       onMouseLeave={(e) => {
         if (isClickable) {
           e.currentTarget.style.transform = 'translateY(0)'
-          e.currentTarget.style.boxShadow = ''
+          e.currentTarget.style.boxShadow = '0 4px 24px -1px rgba(0, 0, 0, 0.05)'
         }
       }}
       onClick={onClick}
     >
-      <Stack gap={4}>
-        <Text size="xs" c="dimmed" fw={600} tt="uppercase">{label}</Text>
-        <Text size={fontSize} fw={700} c={color} lh={1}>{value}</Text>
+      <Stack gap="xs" justify="space-between" h="100%">
+        <Group justify="space-between" align="flex-start">
+          <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={1}>{label}</Text>
+          {Icon && <Icon size={20} stroke={1.5} color={`var(--mantine-color-${color}-6)`} />}
+        </Group>
+
+        <Group align="flex-end" gap="xs">
+          <Text size={fontSize} fw={700} c="dark" lh={1} style={{ letterSpacing: '-1px' }}>{value}</Text>
+        </Group>
+
         {description && (
-          <Text size="xs" c="dimmed">{description}</Text>
+          <Text size="sm" c="dimmed" lh={1.4}>{description}</Text>
         )}
       </Stack>
     </Card>

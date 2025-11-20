@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { 
-  Container, 
-  Title, 
-  Button, 
-  Table, 
+import {
+  Container,
+  Title,
+  Button,
+  Table,
   LoadingOverlay,
   Paper,
   Group,
@@ -22,7 +22,20 @@ import {
   Tabs,
   TextInput
 } from '@mantine/core'
-import { IconRefresh, IconChevronDown, IconChevronUp, IconSearch } from '@tabler/icons-react'
+import {
+  IconRefresh,
+  IconChevronDown,
+  IconChevronUp,
+  IconSearch,
+  IconUserCheck,
+  IconClock,
+  IconUserX,
+  IconAlertCircle,
+  IconUsers,
+  IconHourglassHigh,
+  IconBriefcase,
+  IconCalendar
+} from '@tabler/icons-react'
 import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
 import { formatHoursMinutes } from '@/utils/attendanceUtils'
@@ -39,17 +52,17 @@ function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1)
   const [logsPerPage] = useState(50)
   const [totalPages, setTotalPages] = useState(1)
-  
+
   // State for sync
   const [syncing, setSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState(null)
   const syncingRef = useRef(false)
-  
+
   // State for metrics
-  const [metrics, setMetrics] = useState({ 
-    present: 0, 
-    late: 0, 
-    absent: 0, 
+  const [metrics, setMetrics] = useState({
+    present: 0,
+    late: 0,
+    absent: 0,
     onTime: 0,
     totalOvertimeHours: 0,
     totalWorkingHours: 0,
@@ -63,17 +76,17 @@ function Dashboard() {
   const [presentEmployees, setPresentEmployees] = useState([])
   const [departmentEmployees, setDepartmentEmployees] = useState([])
   const [punchOutMissingEmployees, setPunchOutMissingEmployees] = useState([])
-  
+
   // State for modals
   const [lateModalOpen, setLateModalOpen] = useState(false)
   const [absentModalOpen, setAbsentModalOpen] = useState(false)
   const [onTimeModalOpen, setOnTimeModalOpen] = useState(false)
   const [presentModalOpen, setPresentModalOpen] = useState(false)
   const [punchOutMissingModalOpen, setPunchOutMissingModalOpen] = useState(false)
-  
+
   // State for department collapse
   const [expandedDepartments, setExpandedDepartments] = useState({})
-  
+
   // State for search and tabs
   const [logsSearchQuery, setLogsSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState('status')
@@ -82,25 +95,25 @@ function Dashboard() {
   const fetchLogs = async (page = 1, limit = 50, fetchAll = false) => {
     try {
       setLoading(true)
-      
+
       if (fetchAll) {
         // When searching, fetch multiple pages to get all logs
         // Fetch first 20 pages (1000 logs) which should cover most cases
         const maxPagesToFetch = 20
         const allFetchedLogs = []
-        
+
         // Fetch first page to get total count
         const firstResponse = await fetch(`/api/logs/filter?page=1&limit=${limit}`)
         const firstResult = await firstResponse.json()
-        
+
         if (!firstResponse.ok) {
           throw new Error(firstResult.error || 'Failed to fetch logs')
         }
-        
+
         allFetchedLogs.push(...(firstResult.data || []))
         const totalPagesFromAPI = firstResult.totalPages || 1
         const pagesToFetch = Math.min(maxPagesToFetch, totalPagesFromAPI)
-        
+
         // Fetch remaining pages in parallel
         if (pagesToFetch > 1) {
           const fetchPromises = []
@@ -111,13 +124,13 @@ function Dashboard() {
                 .then(result => result.data || [])
             )
           }
-          
+
           const additionalLogs = await Promise.all(fetchPromises)
           additionalLogs.forEach(pageLogs => {
             allFetchedLogs.push(...pageLogs)
           })
         }
-        
+
         // Store all logs for search filtering
         setAllLogs(allFetchedLogs)
         setLogs(allFetchedLogs)
@@ -154,7 +167,7 @@ function Dashboard() {
     try {
       syncingRef.current = true
       setSyncing(true)
-      
+
       const notificationId = !silent ? showLoading('Fetching attendance from device...', 'Syncing data', { id: 'syncing' }) : null
 
       const response = await fetch('/api/sync', { method: 'POST' })
@@ -165,7 +178,7 @@ function Dashboard() {
       }
 
       setLastSyncTime(new Date())
-      
+
       if (!silent && notificationId) {
         updateNotification('syncing', result.message || 'Data synced successfully', 'Success', 'success', { autoClose: 2000 })
       }
@@ -201,16 +214,16 @@ function Dashboard() {
       const settingsResult = await settingsResponse.json()
       const workingDayEnabled = settingsResult.data?.working_day_enabled || false
       const workingDayStartTime = settingsResult.data?.working_day_start_time || '10:00'
-      
+
       // Get current date in Pakistan timezone (UTC+5)
       const now = new Date()
       const pakistanOffset = 5 * 60 * 60 * 1000
       const pakistanNow = new Date(now.getTime() + pakistanOffset)
-      
+
       // Determine the "effective working day" based on company settings
       let effectiveDateStr = pakistanNow.toISOString().slice(0, 10)
       let yesterdayDateStr = new Date(pakistanNow.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      
+
       if (workingDayEnabled) {
         // Parse working day start time (e.g., "10:00")
         const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
@@ -218,7 +231,7 @@ function Dashboard() {
         const currentMinute = pakistanNow.getUTCMinutes()
         const currentTimeMinutes = currentHour * 60 + currentMinute
         const workingDayStartMinutes = startHour * 60 + startMinute
-        
+
         // If current time is before working day start, we're still on yesterday's working day
         if (currentTimeMinutes < workingDayStartMinutes) {
           effectiveDateStr = yesterdayDateStr
@@ -227,10 +240,10 @@ function Dashboard() {
           console.log(`[Metrics] After working day start (${workingDayStartTime}), using today's working day: ${effectiveDateStr}`)
         }
       }
-      
+
       const pakistanDateStr = effectiveDateStr
       const pakistanYesterdayStr = yesterdayDateStr
-      
+
       console.log(`[Metrics] Fetching for Effective Date: ${pakistanDateStr}, Previous Day: ${pakistanYesterdayStr}`)
 
       // Fetch all employees
@@ -247,16 +260,16 @@ function Dashboard() {
         fetch(`/api/reports/daily-work-time/batch?date=${pakistanDateStr}`),
         fetch(`/api/reports/daily-work-time/batch?date=${pakistanYesterdayStr}`)
       ])
-      
+
       const [batchResult, yesterdayBatchResult] = await Promise.all([
         batchResponse.json(),
         yesterdayBatchResponse.json()
       ])
-      
+
       if (!batchResponse.ok) {
         throw new Error(batchResult.error || 'Failed to fetch batch attendance data')
       }
-      
+
       if (!yesterdayBatchResponse.ok) {
         throw new Error(yesterdayBatchResult.error || 'Failed to fetch yesterday batch attendance data')
       }
@@ -266,14 +279,14 @@ function Dashboard() {
 
       const yesterdayBatchData = yesterdayBatchResult.data || []
       const yesterdayBatchMap = new Map(yesterdayBatchData.map(item => [item.employee_id, item]))
-      
+
       console.log(`[Metrics] Received ${batchData.length} today, ${yesterdayBatchData.length} yesterday`)
 
       // Build results array matching the original structure
       const results = employees.map((e) => {
         const todayRow = batchMap.get(e.id)
         const yesterdayRow = yesterdayBatchMap.get(e.id)
-        
+
         const employeeName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'
         const departmentName = e.department?.name || 'No Department'
         const scheduleInfo = e.primary_schedule || 'Not Assigned'
@@ -283,7 +296,7 @@ function Dashboard() {
         // so todayRow will actually contain yesterday's data
         let status = 'Absent'
         let relevantRow = null
-        
+
         if (todayRow && todayRow.status) {
           // Use the effective date's status
           status = todayRow.status
@@ -424,19 +437,19 @@ function Dashboard() {
 
       for (const result of results) {
         if (!result) continue
-        
+
         const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
-        
+
         // Sum overtime hours (only for employees who worked)
         if (r && r.overtimeHours) {
           totalOvertimeHours += Number(r.overtimeHours) || 0
         }
-        
+
         // Sum total working hours (regular + overtime = durationHours)
         if (r && r.durationHours) {
           totalWorkingHours += Number(r.durationHours) || 0
         }
-        
+
         // Count and list punch out missing employees
         if (status === 'Punch Out Missing') {
           punchOutMissingCount++
@@ -456,10 +469,10 @@ function Dashboard() {
       totalWorkingHours = Math.round(totalWorkingHours * 100) / 100
 
       setTotalEmployees(employees.length)
-      setMetrics({ 
-        present: presentCount, 
-        late: lateCount, 
-        absent: absentCount, 
+      setMetrics({
+        present: presentCount,
+        late: lateCount,
+        absent: absentCount,
         onTime: onTimeCount,
         totalOvertimeHours,
         totalWorkingHours,
@@ -470,22 +483,22 @@ function Dashboard() {
       setOnTimeEmployees(onTimeList)
       setPresentEmployees(presentList)
       setPunchOutMissingEmployees(punchOutMissingList)
-      
+
       // Build department-wise employee list - SIMPLIFIED!
       // ✅ REUSE the same API results - single source of truth!
       const deptMap = new Map()
-      
+
       for (const result of results) {
         if (!result) continue
-        
+
         try {
           const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
-          
+
           // Group by department
           if (!deptMap.has(departmentName)) {
             deptMap.set(departmentName, [])
           }
-          
+
           // Add employee to department list with API status
           deptMap.get(departmentName).push({
             id: e.id,
@@ -499,7 +512,7 @@ function Dashboard() {
           console.error(`[DeptList] Error adding ${employeeName} to department list:`, err)
         }
       }
-      
+
       // Convert map to sorted array
       const deptArray = Array.from(deptMap.entries())
         .map(([department, employees]) => ({
@@ -507,9 +520,9 @@ function Dashboard() {
           employees: employees.sort((a, b) => a.name.localeCompare(b.name))
         }))
         .sort((a, b) => a.department.localeCompare(b.department))
-      
+
       setDepartmentEmployees(deptArray)
-      
+
     } catch (e) {
       console.error('[Metrics] Error:', e)
       if (!background) {
@@ -519,32 +532,32 @@ function Dashboard() {
       setLoadingMetrics(false)
     }
   }, [])
-  
+
   // Auto-sync: Initial sync after 2 seconds, then every 5 minutes
   useEffect(() => {
     const initialTimer = setTimeout(() => {
       handleSync(true) // true = silent
     }, 2000)
-    
+
     const interval = setInterval(() => {
       handleSync(true) // true = silent
     }, 5 * 60 * 1000) // 5 minutes
-    
+
     return () => {
       clearTimeout(initialTimer)
       clearInterval(interval)
     }
   }, [handleSync])
-  
+
   // Background metrics refresh every 2 minutes
   useEffect(() => {
     const interval = setInterval(() => {
       fetchMetrics(true) // true = background refresh
     }, 2 * 60 * 1000) // 2 minutes
-    
+
     return () => clearInterval(interval)
   }, [fetchMetrics])
-  
+
   // Initial data load
   useEffect(() => {
     fetchLogs()
@@ -581,12 +594,12 @@ function Dashboard() {
       setExpandedDepartments(allExpanded)
     }
   }, [departmentEmployees, expandedDepartments])
-  
+
   // Helper to format date/time
   const formatDateTime = (timestamp) => {
     if (!timestamp) return 'N/A'
     const date = new Date(timestamp)
-    return date.toLocaleString('en-PK', { 
+    return date.toLocaleString('en-PK', {
       timeZone: 'Asia/Karachi',
       year: 'numeric',
       month: '2-digit',
@@ -597,25 +610,25 @@ function Dashboard() {
       hour12: true
     })
   }
-  
+
   const coalesce = (val) => val || 'N/A'
 
   const getEmployeeName = (employee) => {
     if (!employee) return 'Unknown'
-    
+
     if (Array.isArray(employee) && employee.length > 0) {
       employee = employee[0]
     }
-    
+
     if (typeof employee === 'object' && employee !== null) {
       const firstName = employee.first_name || ''
       const lastName = employee.last_name || ''
       const fullName = `${firstName} ${lastName}`.trim()
-      
+
       if (fullName) return fullName
       if (firstName) return firstName
     }
-    
+
     return 'Unknown'
   }
 
@@ -624,7 +637,7 @@ function Dashboard() {
   const logsToFilter = allLogs.length > 0 ? allLogs : logs
   const filteredLogs = logsToFilter.filter((log) => {
     if (!logsSearchQuery.trim()) return true
-    
+
     const query = logsSearchQuery.toLowerCase()
     const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
     const employeeName = getEmployeeName(log.employees).toLowerCase()
@@ -634,7 +647,7 @@ function Dashboard() {
     const statusText = String(log.status_text || '').toLowerCase()
     const logTime = formatDateTime(log.log_time).toLowerCase()
     const syncedAt = formatDateTime(log.synced_at).toLowerCase()
-    
+
     return (
       employeeName.includes(query) ||
       zkUserId.includes(query) ||
@@ -648,7 +661,7 @@ function Dashboard() {
 
   // Client-side pagination for filtered results
   const filteredTotalPages = Math.max(1, Math.ceil(filteredLogs.length / logsPerPage))
-  const paginatedFilteredLogs = logsSearchQuery.trim() 
+  const paginatedFilteredLogs = logsSearchQuery.trim()
     ? filteredLogs.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage)
     : filteredLogs
 
@@ -657,10 +670,10 @@ function Dashboard() {
     const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
     const employeeId = employee?.id
     const employeeName = getEmployeeName(log.employees)
-    
+
     return (
-    <Table.Tr key={log.id}>
-      <Table.Td>{log.zk_user_id}</Table.Td>
+      <Table.Tr key={log.id}>
+        <Table.Td>{log.zk_user_id}</Table.Td>
         <Table.Td>
           {employeeId ? (
             <Link href={`/employees/${employeeId}`} style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -672,143 +685,192 @@ function Dashboard() {
             employeeName
           )}
         </Table.Td>
-      <Table.Td>{coalesce(log.department_name)}</Table.Td>
-      <Table.Td>{formatDateTime(log.log_time)}</Table.Td>
-      <Table.Td>{coalesce(log.punch_text)}</Table.Td>
-      <Table.Td>{formatDateTime(log.synced_at)}</Table.Td>
-    </Table.Tr>
+        <Table.Td>{coalesce(log.department_name)}</Table.Td>
+        <Table.Td>{formatDateTime(log.log_time)}</Table.Td>
+        <Table.Td>{coalesce(log.punch_text)}</Table.Td>
+        <Table.Td>{formatDateTime(log.synced_at)}</Table.Td>
+      </Table.Tr>
     )
   })
 
   return (
-    <Box 
-      style={{ 
+    <Box
+      style={{
         minHeight: '100vh',
-        paddingLeft: 'var(--mantine-spacing-md)',
-        paddingRight: 'calc(250px + var(--mantine-spacing-md))', // Navbar width + left padding for visual centering
-        paddingTop: 'var(--mantine-spacing-md)',
-        paddingBottom: 'var(--mantine-spacing-md)',
-        maxWidth: '1400px',
-        marginLeft: 'auto',
-        marginRight: 'auto'
       }}
     >
-      {/* Header */}
-      <Stack gap="md">
-        <Group justify="space-between" align="center">
-          <div>
-            <Title order={1} mb={4}>HR Attendance Dashboard</Title>
-            {lastSyncTime && (
-              <Text size="sm" c="dimmed">
-                Last sync: {formatUTC12HourTime(lastSyncTime.toISOString())}
+      <Container size="xl" mx="auto" py="md">
+        {/* Header Section */}
+        <Stack gap="lg" mb={30}>
+          <Group justify="space-between" align="flex-end">
+            <div>
+              <Text c="dimmed" size="sm" fw={500} mb={4} tt="uppercase" ls={1}>
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </Text>
-            )}
-          </div>
-        <Button
-            onClick={() => handleSync(false)}
-          loading={syncing}
-            leftSection={<IconRefresh size={16} />}
-            size="md"
-        >
-          Sync Data Now
-        </Button>
-      </Group>
+              <Title order={1} style={{ fontWeight: 800, fontSize: '2.5rem', letterSpacing: '-1px', color: '#2d3436' }}>
+                Good Morning, Admin
+              </Title>
+              {lastSyncTime && (
+                <Group gap={6} mt={4}>
+                  <IconRefresh size={14} className={syncing ? 'mantine-rotate' : ''} style={{ opacity: 0.5 }} />
+                  <Text size="sm" c="dimmed">
+                    Last synced: {formatUTC12HourTime(lastSyncTime.toISOString())}
+                  </Text>
+                </Group>
+              )}
+            </div>
+            <Button
+              onClick={() => handleSync(false)}
+              loading={syncing}
+              leftSection={<IconRefresh size={18} />}
+              size="md"
+              radius="md"
+              color="dark"
+              variant="filled"
+              style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+            >
+              Sync Data
+            </Button>
+          </Group>
+        </Stack>
 
-        {/* Metrics Grid - Using Reusable MetricCard Component */}
-        <Grid gutter="md">
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+        {/* Bento Grid Layout */}
+        <Grid gutter="lg" mb={30}>
+          {/* Primary Stats Row */}
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <MetricCard
               value={metrics.present}
               label="Present"
-              description="Working today"
+              description="Checked in today"
               color="blue"
+              icon={IconUserCheck}
               clickable
               onClick={() => setPresentModalOpen(true)}
             />
           </Grid.Col>
-
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <MetricCard
               value={metrics.onTime}
-              label="On-Time"
-              description="Punctual"
-              color="green"
+              label="On Time"
+              description="Arrived on schedule"
+              color="teal"
+              icon={IconClock}
               clickable
               onClick={() => setOnTimeModalOpen(true)}
             />
           </Grid.Col>
-
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <MetricCard
               value={metrics.late}
-              label="Late-In"
-              description="Delayed arrival"
+              label="Late In"
+              description="Arrived after start time"
               color="orange"
+              icon={IconAlertCircle}
               clickable
               onClick={() => setLateModalOpen(true)}
             />
           </Grid.Col>
-
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <MetricCard
               value={metrics.absent}
               label="Absent"
-              description="Not present"
+              description="Not checked in"
               color="red"
+              icon={IconUserX}
               clickable
               onClick={() => setAbsentModalOpen(true)}
             />
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <MetricCard
-              value={totalEmployees}
-              label="Total"
-              description="All employees"
-              color="gray"
-            />
+          {/* Secondary Stats Row - Bento Style */}
+          <Grid.Col span={{ base: 12, md: 8 }}>
+            <Card
+              padding="lg"
+              radius="lg"
+              style={{
+                height: '100%',
+                background: 'rgba(255, 255, 255, 0.7)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.05)'
+              }}
+            >
+              <Group justify="space-between" mb="md">
+                <Title order={4}>Quick Actions</Title>
+                <IconBriefcase size={20} color="gray" />
+              </Group>
+              <Grid>
+                <Grid.Col span={4}>
+                  <Button fullWidth variant="light" color="blue" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <IconUsers size={24} />
+                    Manage Employees
+                  </Button>
+                </Grid.Col>
+                <Grid.Col span={4}>
+                  <Button fullWidth variant="light" color="violet" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <IconCalendar size={24} />
+                    View Schedule
+                  </Button>
+                </Grid.Col>
+                <Grid.Col span={4}>
+                  <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <IconAlertCircle size={24} />
+                    Review Alerts
+                  </Button>
+                </Grid.Col>
+              </Grid>
+            </Card>
           </Grid.Col>
 
-          {/* Additional Metrics */}
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <MetricCard
-              value={formatHoursMinutes(metrics.totalOvertimeHours || 0)}
-              label="Overtime"
-              description="Total overtime hours"
-              color="violet"
-              size="md"
-            />
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            <Stack gap="lg">
+              <MetricCard
+                value={totalEmployees}
+                label="Total Workforce"
+                color="indigo"
+                icon={IconUsers}
+                size="md"
+              />
+              <Group grow>
+                <MetricCard
+                  value={formatHoursMinutes(metrics.totalWorkingHours || 0)}
+                  label="Work Hrs"
+                  color="grape"
+                  icon={IconBriefcase}
+                  size="sm"
+                />
+                <MetricCard
+                  value={formatHoursMinutes(metrics.totalOvertimeHours || 0)}
+                  label="Overtime"
+                  color="pink"
+                  icon={IconHourglassHigh}
+                  size="sm"
+                />
+              </Group>
+            </Stack>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
-            <MetricCard
-              value={formatHoursMinutes(metrics.totalWorkingHours || 0)}
-              label="Working Hours"
-              description="Total hours worked"
-              color="teal"
-              size="md"
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, xs: 6, sm: 6, md: 2.4 }}>
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <MetricCard
               value={metrics.punchOutMissing || 0}
-              label="Punch Out Missing"
-              description="Still working"
+              label="Missing Out"
+              description="Forgot to clock out"
               color="yellow"
+              icon={IconAlertCircle}
               clickable
               onClick={() => setPunchOutMissingModalOpen(true)}
             />
           </Grid.Col>
         </Grid>
 
+
         {/* Refresh Controls - Compact */}
         <Paper withBorder p="sm" radius="lg" style={{ background: 'var(--mantine-color-gray-0)' }}>
-        <Group justify="space-between" align="center">
+          <Group justify="space-between" align="center">
             <Group gap="xs">
               <Text size="sm" fw={500} c="dimmed">Auto-refresh: Every 2 minutes</Text>
               <Badge size="sm" variant="dot" color="green">Active</Badge>
-          </Group>
+            </Group>
             <Button
               onClick={() => fetchMetrics(false)}
               loading={metricsLoading}
@@ -818,8 +880,8 @@ function Dashboard() {
             >
               Refresh Now
             </Button>
-        </Group>
-      </Paper>
+          </Group>
+        </Paper>
 
         {/* Tabs for Status by Department and Attendance Logs */}
         <Tabs value={activeTab} onChange={setActiveTab}>
@@ -835,7 +897,7 @@ function Dashboard() {
                   <Title order={3} mb={4}>Employee Status by Department</Title>
                   <Text size="sm" c="dimmed">Real-time attendance overview (same calculation as badges above ✅)</Text>
                 </div>
-                
+
                 {metricsLoading ? (
                   <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
                 ) : departmentEmployees.length === 0 ? (
@@ -844,8 +906,8 @@ function Dashboard() {
                   <Stack gap="sm">
                     {departmentEmployees.map((dept) => (
                       <Card key={dept.department} withBorder radius="md">
-                        <Group 
-                          justify="space-between" 
+                        <Group
+                          justify="space-between"
                           style={{ cursor: 'pointer' }}
                           onClick={() => {
                             setExpandedDepartments(prev => ({
@@ -859,18 +921,18 @@ function Dashboard() {
                             <Text size="sm" c="dimmed">{dept.employees.length} employees</Text>
                           </div>
                           <ActionIcon variant="subtle" size="lg">
-                            {expandedDepartments[dept.department] ? 
-                              <IconChevronUp size={20} /> : 
+                            {expandedDepartments[dept.department] ?
+                              <IconChevronUp size={20} /> :
                               <IconChevronDown size={20} />
                             }
                           </ActionIcon>
                         </Group>
-                        
+
                         <Collapse in={expandedDepartments[dept.department]}>
                           <div style={{ marginTop: '1rem' }}>
-                            <Table 
-                              striped 
-                              highlightOnHover 
+                            <Table
+                              striped
+                              highlightOnHover
                               style={{ tableLayout: 'fixed', width: '100%' }}
                             >
                               <colgroup>
@@ -896,7 +958,7 @@ function Dashboard() {
                                   else if (emp.status === 'Shift Not Started') badgeColor = 'blue'
                                   else if (emp.status === 'Punch Out Missing') badgeColor = 'yellow'
                                   else if (emp.status === 'Out of Schedule') badgeColor = 'grape'
-                                  
+
                                   return (
                                     <Table.Tr key={emp.id}>
                                       <Table.Td>
@@ -934,267 +996,267 @@ function Dashboard() {
             </Paper>
           </Tabs.Panel>
 
-      {/* Modals for Late, Absent, and On-Time Employees */}
-      <Modal
-        opened={lateModalOpen}
-        onClose={() => setLateModalOpen(false)}
-        title={
-          <Text fw={600} size="lg">Employees Late-In Today</Text>
-        }
-        size="xl"
-        styles={{
-          body: { padding: 'var(--mantine-spacing-lg)' },
-          content: { maxWidth: '1000px' }
-        }}
-      >
-        {lateEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl" size="lg">No late employees</Text>
-        ) : (
-          <Table 
-            striped 
-            highlightOnHover
-            withTableBorder
-            withColumnBorders={false}
+          {/* Modals for Late, Absent, and On-Time Employees */}
+          <Modal
+            opened={lateModalOpen}
+            onClose={() => setLateModalOpen(false)}
+            title={
+              <Text fw={600} size="lg">Employees Late-In Today</Text>
+            }
+            size="xl"
+            styles={{
+              body: { padding: 'var(--mantine-spacing-lg)' },
+              content: { maxWidth: '1000px' }
+            }}
           >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {lateEmployees.map((emp) => (
-                <Table.Tr key={emp.id}>
-                  <Table.Td>
-                    <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link" fw={500}>
-                        {emp.name}
-                      </Text>
-                    </Link>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.department}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.schedule}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" ff="monospace">
-                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" ff="monospace" c="dimmed">
-                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
-      </Modal>
+            {lateEmployees.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl" size="lg">No late employees</Text>
+            ) : (
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                withColumnBorders={false}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {lateEmployees.map((emp) => (
+                    <Table.Tr key={emp.id}>
+                      <Table.Td>
+                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Text component="span" className="employee-name-link" fw={500}>
+                            {emp.name}
+                          </Text>
+                        </Link>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.department}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.schedule}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace">
+                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace" c="dimmed">
+                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Modal>
 
-      <Modal
-        opened={absentModalOpen}
-        onClose={() => setAbsentModalOpen(false)}
-        title={
-          <Text fw={600} size="lg">Employees Absent Today</Text>
-        }
-        size="xl"
-        styles={{
-          body: { padding: 'var(--mantine-spacing-lg)' },
-          content: { maxWidth: '900px' }
-        }}
-      >
-        {absentEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl" size="lg">No absent employees</Text>
-        ) : (
-          <Table 
-            striped 
-            highlightOnHover
-            withTableBorder
-            withColumnBorders={false}
+          <Modal
+            opened={absentModalOpen}
+            onClose={() => setAbsentModalOpen(false)}
+            title={
+              <Text fw={600} size="lg">Employees Absent Today</Text>
+            }
+            size="xl"
+            styles={{
+              body: { padding: 'var(--mantine-spacing-lg)' },
+              content: { maxWidth: '900px' }
+            }}
           >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {absentEmployees.map((emp) => (
-                <Table.Tr key={emp.id}>
-                  <Table.Td>
-                    <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link" fw={500}>
-                        {emp.name}
-          </Text>
-                    </Link>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.department}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.schedule}</Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
-      </Modal>
+            {absentEmployees.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl" size="lg">No absent employees</Text>
+            ) : (
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                withColumnBorders={false}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {absentEmployees.map((emp) => (
+                    <Table.Tr key={emp.id}>
+                      <Table.Td>
+                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Text component="span" className="employee-name-link" fw={500}>
+                            {emp.name}
+                          </Text>
+                        </Link>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.department}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.schedule}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Modal>
 
-      <Modal
-        opened={onTimeModalOpen}
-        onClose={() => setOnTimeModalOpen(false)}
-        title={
-          <Text fw={600} size="lg">Employees On-Time Today</Text>
-        }
-        size="xl"
-        styles={{
-          body: { padding: 'var(--mantine-spacing-lg)' },
-          content: { maxWidth: '1000px' }
-        }}
-      >
-        {onTimeEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl" size="lg">No on-time employees</Text>
-        ) : (
-          <Table 
-            striped 
-            highlightOnHover 
-            withTableBorder
-            withColumnBorders={false}
+          <Modal
+            opened={onTimeModalOpen}
+            onClose={() => setOnTimeModalOpen(false)}
+            title={
+              <Text fw={600} size="lg">Employees On-Time Today</Text>
+            }
+            size="xl"
+            styles={{
+              body: { padding: 'var(--mantine-spacing-lg)' },
+              content: { maxWidth: '1000px' }
+            }}
           >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {onTimeEmployees.map((emp) => (
-                <Table.Tr key={emp.id}>
-                  <Table.Td>
-                    <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link" fw={500}>
-                        {emp.name}
-                      </Text>
-                    </Link>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.department}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.schedule}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" ff="monospace">
-                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" ff="monospace" c="dimmed">
-                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
-      </Modal>
+            {onTimeEmployees.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl" size="lg">No on-time employees</Text>
+            ) : (
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                withColumnBorders={false}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {onTimeEmployees.map((emp) => (
+                    <Table.Tr key={emp.id}>
+                      <Table.Td>
+                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Text component="span" className="employee-name-link" fw={500}>
+                            {emp.name}
+                          </Text>
+                        </Link>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.department}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.schedule}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace">
+                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace" c="dimmed">
+                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Modal>
 
-      <Modal
-        opened={presentModalOpen}
-        onClose={() => setPresentModalOpen(false)}
-        title={
-          <Text fw={600} size="lg">Employees Present Today</Text>
-        }
-        size="xl"
-        styles={{
-          body: { padding: 'var(--mantine-spacing-lg)' },
-          content: { maxWidth: '1200px' }
-        }}
-      >
-        {presentEmployees.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl" size="lg">No present employees</Text>
-        ) : (
-          <Table 
-            striped 
-            highlightOnHover
-            withTableBorder
-            withColumnBorders={false}
-            style={{ tableLayout: 'auto' }}
+          <Modal
+            opened={presentModalOpen}
+            onClose={() => setPresentModalOpen(false)}
+            title={
+              <Text fw={600} size="lg">Employees Present Today</Text>
+            }
+            size="xl"
+            styles={{
+              body: { padding: 'var(--mantine-spacing-lg)' },
+              content: { maxWidth: '1200px' }
+            }}
           >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                <Table.Th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>Status</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {presentEmployees.map((emp) => (
-                <Table.Tr key={emp.id}>
-                  <Table.Td>
-                    <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      <Text component="span" className="employee-name-link" fw={500}>
-                        {emp.name}
-                      </Text>
-                    </Link>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.department}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{emp.schedule}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge 
-                      color={
-                        emp.status === 'On-Time' ? 'green' : 
-                        emp.status === 'Late-In' ? 'orange' : 
-                        'yellow'
-                      }
-                      size="md"
-                      variant="light"
-                      style={{ whiteSpace: 'nowrap' }}
-                    >
-                      {emp.status}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" ff="monospace">
-                      {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text 
-                      size="sm" 
-                      ff="monospace"
-                      c={emp.outTime ? undefined : 'dimmed'}
-                      fw={emp.outTime ? undefined : 500}
-                    >
-                      {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
-      </Modal>
+            {presentEmployees.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl" size="lg">No present employees</Text>
+            ) : (
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                withColumnBorders={false}
+                style={{ tableLayout: 'auto' }}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                    <Table.Th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>Status</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {presentEmployees.map((emp) => (
+                    <Table.Tr key={emp.id}>
+                      <Table.Td>
+                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Text component="span" className="employee-name-link" fw={500}>
+                            {emp.name}
+                          </Text>
+                        </Link>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.department}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.schedule}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge
+                          color={
+                            emp.status === 'On-Time' ? 'green' :
+                              emp.status === 'Late-In' ? 'orange' :
+                                'yellow'
+                          }
+                          size="md"
+                          variant="light"
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          {emp.status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace">
+                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text
+                          size="sm"
+                          ff="monospace"
+                          c={emp.outTime ? undefined : 'dimmed'}
+                          fw={emp.outTime ? undefined : 500}
+                        >
+                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Modal>
 
           <Tabs.Panel value="logs" pt="md">
             <Paper withBorder radius="lg" p="md">
@@ -1214,7 +1276,7 @@ function Dashboard() {
                     </Text>
                   )}
                 </div>
-                
+
                 <LoadingOverlay visible={loading} />
                 <Table striped highlightOnHover>
                   <Table.Thead>
@@ -1244,16 +1306,16 @@ function Dashboard() {
 
                 {/* Pagination */}
                 <Group justify="center" mt="xl">
-                  <Pagination 
-                    total={logsSearchQuery.trim() ? filteredTotalPages : totalPages} 
-                    value={currentPage} 
+                  <Pagination
+                    total={logsSearchQuery.trim() ? filteredTotalPages : totalPages}
+                    value={currentPage}
                     onChange={(p) => {
                       setCurrentPage(p)
                       // Only fetch from server if not searching (client-side pagination when searching)
                       if (!logsSearchQuery.trim()) {
                         fetchLogs(p, logsPerPage, false)
                       }
-                    }} 
+                    }}
                   />
                 </Group>
               </Stack>
@@ -1277,8 +1339,8 @@ function Dashboard() {
           {punchOutMissingEmployees.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl" size="lg">No employees with missing punch out</Text>
           ) : (
-            <Table 
-              striped 
+            <Table
+              striped
               highlightOnHover
               withTableBorder
               withColumnBorders={false}
@@ -1318,7 +1380,7 @@ function Dashboard() {
             </Table>
           )}
         </Modal>
-      </Stack>
+      </Container>
     </Box>
   )
 }
