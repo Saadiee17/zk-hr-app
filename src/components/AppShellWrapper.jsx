@@ -68,6 +68,7 @@ export function AppShellWrapper({ children }) {
           width: '100%',
           padding: 0,
           paddingLeft: 0,
+          paddingTop: 56, // Match header height to prevent overlap
           marginLeft: 0,
         }}
       >

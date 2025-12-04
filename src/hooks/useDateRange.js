@@ -11,8 +11,12 @@ export function useDateRange(defaultFilter = 'this-month') {
     return getDateRangeForFilter(defaultFilter)
   })
 
-  // Update date range when filter changes
+  // Update date range when filter changes (except for custom)
   useEffect(() => {
+    // Don't auto-update range for custom filter - let user select freely
+    if (dateFilter === 'custom') {
+      return
+    }
     const range = getDateRangeForFilter(dateFilter)
     if (range) {
       setDateRange(range)
@@ -21,6 +25,10 @@ export function useDateRange(defaultFilter = 'this-month') {
 
   const handleFilterChange = (filter) => {
     setDateFilter(filter)
+    // Don't recalculate range for custom - let user select via date picker
+    if (filter === 'custom') {
+      return
+    }
     const range = getDateRangeForFilter(filter)
     if (range) {
       setDateRange(range)
@@ -29,15 +37,11 @@ export function useDateRange(defaultFilter = 'this-month') {
 
   const handleCustomRangeChange = (range) => {
     setDateRange(range)
+    // Only update filter to custom when both dates are selected
     if (range && range[0] && range[1]) {
       setDateFilter('custom')
-    } else {
-      // Reset to this-month if range is cleared
-      const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-      setDateRange([start, now])
-      setDateFilter('this-month')
     }
+    // Don't auto-reset to 'this-month' - allow free date selection
   }
 
   return {
@@ -51,7 +55,7 @@ export function useDateRange(defaultFilter = 'this-month') {
 
 function getDateRangeForFilter(filter) {
   const now = new Date()
-  
+
   switch (filter) {
     case 'today': {
       const today = new Date()

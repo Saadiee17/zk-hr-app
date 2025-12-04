@@ -34,7 +34,7 @@ export function DateRangeFilter({ value, onChange, defaultFilter = 'this-month',
 
   const getDateRangeForFilter = (filter) => {
     const now = new Date()
-    
+
     switch (filter) {
       case 'today': {
         const today = new Date()
@@ -83,27 +83,24 @@ export function DateRangeFilter({ value, onChange, defaultFilter = 'this-month',
 
   const handleFilterChange = (filter) => {
     setDateFilter(filter)
+    if (filter === 'custom') {
+      // When switching to custom, keep current range without recalculating
+      // User will then be able to modify it via the date picker
+      return
+    }
     const range = getDateRangeForFilter(filter)
     if (range) {
       onChange(range)
-    } else if (filter === 'custom') {
-      // Keep current range for custom
-      onChange(value)
     }
   }
 
   const handleCustomRangeChange = (range) => {
     onChange(range)
+    // Only update filter state when both dates are selected
     if (range && range[0] && range[1]) {
       setDateFilter('custom')
-    } else {
-      // Reset to this-month if range is cleared
-      const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-      const newRange = [start, now]
-      onChange(newRange)
-      setDateFilter('this-month')
     }
+    // Don't auto-reset to 'this-month' - let users freely select dates
   }
 
   return (
@@ -154,7 +151,7 @@ export function DateRangeFilter({ value, onChange, defaultFilter = 'this-month',
           </Button>
         </Group>
       </div>
-      
+
       {dateFilter === 'custom' && (
         <DatePickerInput
           type="range"
