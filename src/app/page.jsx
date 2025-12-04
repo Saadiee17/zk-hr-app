@@ -38,7 +38,8 @@ import {
 } from '@tabler/icons-react'
 import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
-import { formatHoursMinutes } from '@/utils/attendanceUtils'
+import { DatePickerInput } from '@mantine/dates'
+import { formatHoursMinutes, toYMD } from '@/utils/attendanceUtils'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppShellWrapper } from '@/components/AppShellWrapper'
@@ -90,6 +91,7 @@ function Dashboard() {
   // State for search and tabs
   const [logsSearchQuery, setLogsSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState('status')
+  const [selectedDate, setSelectedDate] = useState(new Date())
 
   // Fetch attendance logs with pagination
   const fetchLogs = async (page = 1, limit = 50, fetchAll = false) => {
@@ -220,25 +222,41 @@ function Dashboard() {
       const pakistanOffset = 5 * 60 * 60 * 1000
       const pakistanNow = new Date(now.getTime() + pakistanOffset)
 
+      // Determine if selected date is "today" (compare YMD)
+      const isToday = toYMD(selectedDate) === toYMD(now)
+
       // Determine the "effective working day" based on company settings
-      let effectiveDateStr = pakistanNow.toISOString().slice(0, 10)
-      let yesterdayDateStr = new Date(pakistanNow.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      let effectiveDateStr
+      let yesterdayDateStr
 
-      if (workingDayEnabled) {
-        // Parse working day start time (e.g., "10:00")
-        const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
-        const currentHour = pakistanNow.getUTCHours()
-        const currentMinute = pakistanNow.getUTCMinutes()
-        const currentTimeMinutes = currentHour * 60 + currentMinute
-        const workingDayStartMinutes = startHour * 60 + startMinute
+      if (isToday) {
+        effectiveDateStr = pakistanNow.toISOString().slice(0, 10)
+        yesterdayDateStr = new Date(pakistanNow.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-        // If current time is before working day start, we're still on yesterday's working day
-        if (currentTimeMinutes < workingDayStartMinutes) {
-          effectiveDateStr = yesterdayDateStr
-          console.log(`[Metrics] Before working day start (${workingDayStartTime}), using yesterday's working day: ${effectiveDateStr}`)
-        } else {
-          console.log(`[Metrics] After working day start (${workingDayStartTime}), using today's working day: ${effectiveDateStr}`)
+        if (workingDayEnabled) {
+          // Parse working day start time (e.g., "10:00")
+          const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
+          const currentHour = pakistanNow.getUTCHours()
+          const currentMinute = pakistanNow.getUTCMinutes()
+          const currentTimeMinutes = currentHour * 60 + currentMinute
+          const workingDayStartMinutes = startHour * 60 + startMinute
+
+          // If current time is before working day start, we're still on yesterday's working day
+          if (currentTimeMinutes < workingDayStartMinutes) {
+            effectiveDateStr = yesterdayDateStr
+            console.log(`[Metrics] Before working day start (${workingDayStartTime}), using yesterday's working day: ${effectiveDateStr}`)
+          } else {
+            console.log(`[Metrics] After working day start (${workingDayStartTime}), using today's working day: ${effectiveDateStr}`)
+          }
         }
+      } else {
+        // Use selected date directly
+        effectiveDateStr = toYMD(selectedDate)
+        const selDate = new Date(selectedDate)
+        const prevDate = new Date(selDate)
+        prevDate.setDate(prevDate.getDate() - 1)
+        yesterdayDateStr = toYMD(prevDate)
+        console.log(`[Metrics] Using selected date: ${effectiveDateStr}`)
       }
 
       const pakistanDateStr = effectiveDateStr
@@ -531,7 +549,7 @@ function Dashboard() {
     } finally {
       setLoadingMetrics(false)
     }
-  }, [])
+  }, [selectedDate])
 
   // Auto-sync: Initial sync after 2 seconds, then every 5 minutes
   useEffect(() => {
@@ -719,18 +737,35 @@ function Dashboard() {
                 </Group>
               )}
             </div>
-            <Button
-              onClick={() => handleSync(false)}
-              loading={syncing}
-              leftSection={<IconRefresh size={18} />}
-              size="md"
-              radius="md"
-              color="dark"
-              variant="filled"
-              style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-            >
-              Sync Data
-            </Button>
+            <Group gap="sm">
+              <DatePickerInput
+                value={selectedDate}
+                onChange={setSelectedDate}
+                maxDate={new Date()}
+                leftSection={<IconCalendar size={16} />}
+                size="md"
+                w={150}
+                clearable={false}
+                styles={{
+                  input: {
+                    fontWeight: 500,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                  }
+                }}
+              />
+              <Button
+                onClick={() => handleSync(false)}
+                loading={syncing}
+                leftSection={<IconRefresh size={18} />}
+                size="md"
+                radius="md"
+                color="dark"
+                variant="filled"
+                style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+              >
+                Sync Data
+              </Button>
+            </Group>
           </Group>
         </Stack>
 
@@ -801,19 +836,19 @@ function Dashboard() {
               </Group>
               <Grid>
                 <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="blue" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Button fullWidth variant="light" color="blue" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} component={Link} href="/employees/manage">
                     <IconUsers size={24} />
                     Manage Employees
                   </Button>
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="violet" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Button fullWidth variant="light" color="violet" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} component={Link} href="/device-config">
                     <IconCalendar size={24} />
                     View Schedule
                   </Button>
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={() => setPunchOutMissingModalOpen(true)}>
                     <IconAlertCircle size={24} />
                     Review Alerts
                   </Button>

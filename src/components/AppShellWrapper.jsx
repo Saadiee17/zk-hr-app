@@ -1,7 +1,7 @@
 'use client'
 
 import { AppShell, useMantineTheme, Burger, Group, Text } from '@mantine/core'
-import { useDisclosure } from '@mantine/hooks'
+import { useDisclosure, useMediaQuery } from '@mantine/hooks'
 import { usePathname } from 'next/navigation'
 import { Navbar } from './Navbar'
 import { EmployeeNavbar } from './EmployeeNavbar'
@@ -10,9 +10,16 @@ export function AppShellWrapper({ children }) {
   const theme = useMantineTheme()
   const [opened, { toggle, close }] = useDisclosure(true)
   const pathname = usePathname()
+  const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`)
 
   const navbarBg = theme.colorScheme === 'dark' ? theme.colors.dark[8] : theme.white
   const mainBg = theme.colorScheme === 'dark' ? theme.colors.dark[7] : theme.colors.gray[0]
+
+  const handleNavigate = () => {
+    if (isMobile) {
+      close()
+    }
+  }
 
   // Check if we're on an employee route (excluding auth pages)
   // IMPORTANT: Use exact match for '/employee' to avoid matching '/employees'
@@ -56,9 +63,9 @@ export function AppShellWrapper({ children }) {
         style={{ backgroundColor: navbarBg }}
       >
         {isEmployeeRoute ? (
-          <EmployeeNavbar />
+          <EmployeeNavbar onNavigate={handleNavigate} />
         ) : (
-          <Navbar onNavigate={close} />
+          <Navbar onNavigate={handleNavigate} />
         )}
       </AppShell.Navbar>
       <AppShell.Main

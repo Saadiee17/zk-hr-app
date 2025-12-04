@@ -1,10 +1,10 @@
 'use client'
 
 import { NavLink, Group, Text, Button, Stack, Badge, Box, ActionIcon, Tooltip, useMantineColorScheme } from '@mantine/core'
-import { 
-  IconHome, 
-  IconUser, 
-  IconCalendar, 
+import {
+  IconHome,
+  IconUser,
+  IconCalendar,
   IconReport,
   IconDownload,
   IconLogout,
@@ -16,7 +16,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
-export function EmployeeNavbar() {
+export function EmployeeNavbar({ onNavigate }) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
@@ -85,6 +85,7 @@ export function EmployeeNavbar() {
               label={item.label}
               leftSection={<item.icon size={18} />}
               active={pathname === item.href}
+              onClick={onNavigate}
             />
           ))}
 
@@ -100,6 +101,7 @@ export function EmployeeNavbar() {
                   leftSection={<IconSettings size={18} />}
                   size="md"
                   style={{ fontWeight: 600 }}
+                  onClick={onNavigate}
                 >
                   Admin Dashboard
                 </Button>
