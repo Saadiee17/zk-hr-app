@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Container, Title, Paper, Tabs, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Badge, Divider } from '@mantine/core'
-import { IconPencil, IconTrash, IconEdit, IconPlus, IconCalendar } from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconEdit, IconPlus, IconCalendar, IconCheck, IconX, IconRefresh, IconSettings, IconCalendarStats, IconSearch, IconFilter } from '@tabler/icons-react'
 import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
 import { DatePickerInput } from '@mantine/dates'
@@ -225,17 +225,17 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to approve request')
-      
+
       // Optionally create schedule exceptions when approving (if they don't exist)
       // Check if exceptions already exist for this leave period
       const checkRes = await fetch(`/api/hr/schedule-exceptions?employee_id=${selectedRequest.employee_id}`)
       const checkJson = await checkRes.json()
       const existingExceptions = checkJson.data || []
-      
+
       const startDate = new Date(selectedRequest.start_date)
       const endDate = new Date(selectedRequest.end_date)
       const missingDates = []
-      
+
       for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0]
         const exists = existingExceptions.some(ex => ex.date === dateStr)
@@ -243,7 +243,7 @@ export default function LeaveManagementPage() {
           missingDates.push(dateStr)
         }
       }
-      
+
       // Create schedule exceptions for missing dates (mark as day off)
       if (missingDates.length > 0) {
         for (const dateStr of missingDates) {
@@ -260,12 +260,12 @@ export default function LeaveManagementPage() {
             }),
           })
         }
-        
+
         showSuccess(`Leave approved. Created ${missingDates.length} schedule exception(s)`, 'Request approved')
       } else {
         showSuccess('Leave request has been approved', 'Request approved')
       }
-      
+
       setApproveRequestOpen(false)
       setSelectedRequest(null)
       await fetchLeaveRequests()
@@ -314,17 +314,17 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to change status')
-      
+
       // If approving, create schedule exceptions
       if (values.status === 'approved') {
         const checkRes = await fetch(`/api/hr/schedule-exceptions?employee_id=${selectedRequest.employee_id}`)
         const checkJson = await checkRes.json()
         const existingExceptions = checkJson.data || []
-        
+
         const startDate = new Date(selectedRequest.start_date)
         const endDate = new Date(selectedRequest.end_date)
         const missingDates = []
-        
+
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0]
           const exists = existingExceptions.some(ex => ex.date === dateStr)
@@ -332,7 +332,7 @@ export default function LeaveManagementPage() {
             missingDates.push(dateStr)
           }
         }
-        
+
         if (missingDates.length > 0) {
           for (const dateStr of missingDates) {
             await fetch('/api/hr/schedule-exceptions', {
@@ -350,7 +350,7 @@ export default function LeaveManagementPage() {
           }
         }
       }
-      
+
       showSuccess(`Leave request status changed to ${values.status}`, 'Status updated')
       setChangeStatusOpen(false)
       setSelectedRequest(null)
@@ -411,156 +411,202 @@ export default function LeaveManagementPage() {
 
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
-      <Title order={1} mb="md">Leave Management</Title>
+      <Stack gap="lg" mb={30}>
+        <Group justify="space-between" align="flex-end">
+          <div>
+            <Text c="dimmed" size="sm" fw={500} mb={4} tt="uppercase" ls={1}>
+              HR Management
+            </Text>
+            <Title order={1} style={{ fontWeight: 800, fontSize: '2.5rem', letterSpacing: '-1px', color: '#2d3436' }}>
+              Leave Management
+            </Title>
+          </div>
+          <Button
+            leftSection={<IconRefresh size={18} />}
+            variant="light"
+            color="gray"
+            onClick={() => {
+              fetchLeaveTypes()
+              fetchEmployees()
+              if (activeTab === 'requests') fetchLeaveRequests()
+              if (activeTab === 'balances') fetchLeaveBalances()
+            }}
+          >
+            Refresh Data
+          </Button>
+        </Group>
+      </Stack>
 
-      <Paper withBorder shadow="sm" p="md">
-        <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
-            <Tabs.Tab value="types">Leave Types</Tabs.Tab>
-            <Tabs.Tab value="requests">Leave Requests</Tabs.Tab>
-            <Tabs.Tab value="balances">Leave Balances</Tabs.Tab>
-          </Tabs.List>
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        variant="pills"
+        radius="md"
+        styles={{
+          list: { backgroundColor: 'white', padding: '4px', borderRadius: '12px', border: '1px solid #e9ecef' },
+          tab: { fontWeight: 600 }
+        }}
+      >
+        <Tabs.List mb="lg">
+          <Tabs.Tab value="types" leftSection={<IconSettings size={16} />}>Leave Types</Tabs.Tab>
+          <Tabs.Tab value="requests" leftSection={<IconCalendar size={16} />}>Leave Requests</Tabs.Tab>
+          <Tabs.Tab value="balances" leftSection={<IconCalendarStats size={16} />}>Leave Balances</Tabs.Tab>
+        </Tabs.List>
 
-          {/* Leave Types Tab */}
-          <Tabs.Panel value="types" pt="md">
-            <Stack gap="md">
-              <Group justify="space-between">
+        {/* Leave Types Tab */}
+        <Tabs.Panel value="types" pt="md">
+          <Stack gap="md">
+            <Group justify="space-between">
+              <div>
                 <Title order={4}>Manage Leave Types</Title>
-                <Button leftSection={<IconPlus size={18} />} onClick={() => setCreateTypeOpen(true)}>
-                  Add Leave Type
-                </Button>
-              </Group>
+                <Text size="sm" c="dimmed">Configure available leave types and policies</Text>
+              </div>
+              <Button leftSection={<IconPlus size={18} />} onClick={() => setCreateTypeOpen(true)}>
+                Add Leave Type
+              </Button>
+            </Group>
 
-              <Paper withBorder>
-                <Table striped highlightOnHover withTableBorder withColumnBorders>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th>Code</Table.Th>
-                      <Table.Th>Max Days/Year</Table.Th>
-                      <Table.Th>Requires Approval</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Actions</Table.Th>
+            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
+              <Table striped highlightOnHover verticalSpacing="sm">
+                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                  <Table.Tr>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Code</Table.Th>
+                    <Table.Th>Max Days/Year</Table.Th>
+                    <Table.Th>Requires Approval</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {leaveTypes.map((type) => (
+                    <Table.Tr key={type.id}>
+                      <Table.Td fw={500}>{type.name}</Table.Td>
+                      <Table.Td><Badge variant="dot" color="gray">{type.code}</Badge></Table.Td>
+                      <Table.Td>{type.max_days_per_year ?? 'Unlimited'}</Table.Td>
+                      <Table.Td>
+                        <Badge color={type.requires_approval ? 'blue' : 'gray'} variant="light">
+                          {type.requires_approval ? 'Required' : 'Optional'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={type.is_active ? 'green' : 'gray'} variant="light">
+                          {type.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon variant="subtle" color="blue" onClick={() => handleEditType(type)}>
+                            <IconEdit size={18} />
+                          </ActionIcon>
+                          <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteType(type)}>
+                            <IconTrash size={18} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
                     </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {leaveTypes.map((type) => (
-                      <Table.Tr key={type.id}>
-                        <Table.Td>{type.name}</Table.Td>
-                        <Table.Td>{type.code}</Table.Td>
-                        <Table.Td>{type.max_days_per_year ?? '-'}</Table.Td>
-                        <Table.Td>{type.requires_approval ? 'Yes' : 'No'}</Table.Td>
-                        <Table.Td>
-                          <Badge color={type.is_active ? 'green' : 'gray'} variant="light">
-                            {type.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            <ActionIcon variant="light" color="blue" onClick={() => handleEditType(type)}>
-                              <IconEdit size={18} />
-                            </ActionIcon>
-                            <ActionIcon variant="light" color="red" onClick={() => handleDeleteType(type)}>
-                              <IconTrash size={18} />
-                            </ActionIcon>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                    {leaveTypes.length === 0 && (
-                      <Table.Tr>
-                        <Table.Td colSpan={6}>
-                          <Text c="dimmed">{leaveTypesLoading ? 'Loading...' : 'No leave types found'}</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    )}
-                  </Table.Tbody>
-                </Table>
-              </Paper>
-            </Stack>
-          </Tabs.Panel>
+                  ))}
+                  {leaveTypes.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={6}>
+                        <Text c="dimmed" ta="center" py="xl">{leaveTypesLoading ? 'Loading...' : 'No leave types found'}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Paper>
+          </Stack>
+        </Tabs.Panel>
 
-          {/* Leave Requests Tab */}
-          <Tabs.Panel value="requests" pt="md">
-            <Stack gap="md">
-              <Group justify="space-between">
+        {/* Leave Requests Tab */}
+        <Tabs.Panel value="requests" pt="md">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-end">
+              <div>
                 <Title order={4}>Leave Requests</Title>
-                <Button leftSection={<IconPlus size={18} />} onClick={() => setCreateRequestOpen(true)}>
-                  New Request
-                </Button>
-              </Group>
+                <Text size="sm" c="dimmed">Manage employee leave applications</Text>
+              </div>
+              <Button leftSection={<IconPlus size={18} />} onClick={() => setCreateRequestOpen(true)}>
+                New Request
+              </Button>
+            </Group>
 
-              <Paper withBorder>
-                <Table striped highlightOnHover withTableBorder withColumnBorders>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Employee</Table.Th>
-                      <Table.Th>Leave Type</Table.Th>
-                      <Table.Th>Start Date</Table.Th>
-                      <Table.Th>End Date</Table.Th>
-                      <Table.Th>Days</Table.Th>
-                      <Table.Th>Reason</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Requested At</Table.Th>
-                      <Table.Th>Actions</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {leaveRequests.map((request) => {
-                      // Handle Supabase join: leave_types might be an object or array
-                      const leaveType = Array.isArray(request.leave_types) 
-                        ? request.leave_types[0] 
-                        : request.leave_types
-                      const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-                      
-                      return (
+            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
+              <Table striped highlightOnHover verticalSpacing="sm">
+                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                  <Table.Tr>
+                    <Table.Th>Employee</Table.Th>
+                    <Table.Th>Leave Type</Table.Th>
+                    <Table.Th>Duration</Table.Th>
+                    <Table.Th>Days</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Requested</Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {leaveRequests.map((request) => {
+                    // Handle Supabase join: leave_types might be an object or array
+                    const leaveType = Array.isArray(request.leave_types)
+                      ? request.leave_types[0]
+                      : request.leave_types
+                    const leaveTypeName = leaveType?.name || leaveType?.code || '-'
+
+                    return (
                       <Table.Tr key={request.id}>
                         <Table.Td>
-                          {formatEmployeeName(request.employee)}
+                          <Group gap="sm">
+                            <div>
+                              <Text size="sm" fw={500}>{formatEmployeeName(request.employee)}</Text>
+                              {request.employee?.department?.name && (
+                                <Text size="xs" c="dimmed">{request.employee.department.name}</Text>
+                              )}
+                            </div>
+                          </Group>
                         </Table.Td>
-                        <Table.Td>{leaveTypeName}</Table.Td>
-                        <Table.Td>{request.start_date}</Table.Td>
-                        <Table.Td>{request.end_date}</Table.Td>
-                        <Table.Td>{request.total_days}</Table.Td>
                         <Table.Td>
-                          <Text size="sm" c={request.reason ? undefined : 'dimmed'}>
-                            {request.reason || '-'}
-                          </Text>
+                          <Badge variant="dot" color="blue">{leaveTypeName}</Badge>
                         </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{request.start_date}</Text>
+                          <Text size="xs" c="dimmed">to {request.end_date}</Text>
+                        </Table.Td>
+                        <Table.Td fw={600}>{request.total_days}</Table.Td>
                         <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
                         <Table.Td>
-                          {request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}
+                          <Text size="sm" c="dimmed">{request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}</Text>
                         </Table.Td>
                         <Table.Td>
                           <Group gap="xs">
                             {request.status === 'pending' && (
                               <>
-                                <Button
-                                  size="xs"
+                                <ActionIcon
+                                  variant="light"
                                   color="green"
-                                  leftSection={<IconCheck size={14} />}
+                                  size="md"
                                   onClick={() => {
                                     setSelectedRequest(request)
                                     setApproveRequestOpen(true)
                                   }}
                                 >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="xs"
+                                  <IconCheck size={16} />
+                                </ActionIcon>
+                                <ActionIcon
+                                  variant="light"
                                   color="red"
-                                  leftSection={<IconX size={14} />}
+                                  size="md"
                                   onClick={() => {
                                     setSelectedRequest(request)
                                     setRejectRequestOpen(true)
                                   }}
                                 >
-                                  Reject
-                                </Button>
+                                  <IconX size={16} />
+                                </ActionIcon>
                               </>
                             )}
                             <ActionIcon
-                              variant="light"
+                              variant="subtle"
                               color="blue"
                               onClick={() => {
                                 setSelectedRequest(request)
@@ -571,78 +617,85 @@ export default function LeaveManagementPage() {
                                 setChangeStatusOpen(true)
                               }}
                             >
-                              <IconEdit size={16} />
+                              <IconEdit size={18} />
                             </ActionIcon>
                           </Group>
                         </Table.Td>
                       </Table.Tr>
-                      )
-                    })}
-                    {leaveRequests.length === 0 && (
-                      <Table.Tr>
-                        <Table.Td colSpan={9}>
-                          <Text c="dimmed">{leaveRequestsLoading ? 'Loading...' : 'No leave requests found'}</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    )}
-                  </Table.Tbody>
-                </Table>
-              </Paper>
-            </Stack>
-          </Tabs.Panel>
-
-          {/* Leave Balances Tab */}
-          <Tabs.Panel value="balances" pt="md">
-            <Stack gap="md">
-              <Title order={4}>Employee Leave Balances</Title>
-
-              <Paper withBorder>
-                <Table striped highlightOnHover withTableBorder withColumnBorders>
-                  <Table.Thead>
+                    )
+                  })}
+                  {leaveRequests.length === 0 && (
                     <Table.Tr>
-                      <Table.Th>Employee</Table.Th>
-                      <Table.Th>Leave Type</Table.Th>
-                      <Table.Th>Total Allotted</Table.Th>
-                      <Table.Th>Used</Table.Th>
-                      <Table.Th>Pending</Table.Th>
-                      <Table.Th>Remaining</Table.Th>
-                      <Table.Th>Year</Table.Th>
-                      <Table.Th>Actions</Table.Th>
+                      <Table.Td colSpan={7}>
+                        <Text c="dimmed" ta="center" py="xl">{leaveRequestsLoading ? 'Loading...' : 'No leave requests found'}</Text>
+                      </Table.Td>
                     </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {leaveBalances.map((balance) => (
-                      <Table.Tr key={balance.id}>
-                        <Table.Td>
-                          {formatEmployeeName(balance.employee)}
-                        </Table.Td>
-                        <Table.Td>{balance.leave_type?.name || '-'}</Table.Td>
-                        <Table.Td>{balance.total_allotted || 0}</Table.Td>
-                        <Table.Td>{balance.used || 0}</Table.Td>
-                        <Table.Td>{balance.pending || 0}</Table.Td>
-                        <Table.Td>{balance.remaining || 0}</Table.Td>
-                        <Table.Td>{balance.year}</Table.Td>
-                        <Table.Td>
-                          <ActionIcon variant="light" color="blue" onClick={() => handleEditBalance(balance)}>
-                            <IconEdit size={18} />
-                          </ActionIcon>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                    {leaveBalances.length === 0 && (
-                      <Table.Tr>
-                        <Table.Td colSpan={8}>
-                          <Text c="dimmed">{leaveBalancesLoading ? 'Loading...' : 'No leave balances found'}</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    )}
-                  </Table.Tbody>
-                </Table>
-              </Paper>
-            </Stack>
-          </Tabs.Panel>
-        </Tabs>
-      </Paper>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Paper>
+          </Stack>
+        </Tabs.Panel>
+
+        {/* Leave Balances Tab */}
+        <Tabs.Panel value="balances" pt="md">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-end">
+              <div>
+                <Title order={4}>Employee Leave Balances</Title>
+                <Text size="sm" c="dimmed">View and adjust leave quotas</Text>
+              </div>
+              {/* Add search/filter here later */}
+            </Group>
+
+            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
+              <Table striped highlightOnHover verticalSpacing="sm">
+                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                  <Table.Tr>
+                    <Table.Th>Employee</Table.Th>
+                    <Table.Th>Leave Type</Table.Th>
+                    <Table.Th>Total Allotted</Table.Th>
+                    <Table.Th>Used</Table.Th>
+                    <Table.Th>Pending</Table.Th>
+                    <Table.Th>Remaining</Table.Th>
+                    <Table.Th>Year</Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {leaveBalances.map((balance) => (
+                    <Table.Tr key={balance.id}>
+                      <Table.Td fw={500}>
+                        {formatEmployeeName(balance.employee)}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="dot" color="gray">{balance.leave_type?.name || '-'}</Badge>
+                      </Table.Td>
+                      <Table.Td>{balance.total_allotted || 0}</Table.Td>
+                      <Table.Td c="blue" fw={500}>{balance.used || 0}</Table.Td>
+                      <Table.Td c="yellow" fw={500}>{balance.pending || 0}</Table.Td>
+                      <Table.Td c="green" fw={700}>{balance.remaining || 0}</Table.Td>
+                      <Table.Td>{balance.year}</Table.Td>
+                      <Table.Td>
+                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditBalance(balance)}>
+                          <IconEdit size={18} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {leaveBalances.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={8}>
+                        <Text c="dimmed" ta="center" py="xl">{leaveBalancesLoading ? 'Loading...' : 'No leave balances found'}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Paper>
+          </Stack>
+        </Tabs.Panel>
+      </Tabs>
 
       {/* Create Leave Type Modal */}
       <Modal opened={createTypeOpen} onClose={() => setCreateTypeOpen(false)} title="Create Leave Type">
@@ -700,7 +753,7 @@ export default function LeaveManagementPage() {
             showEmployeeSelect={true}
           />
           <Text size="sm" c="dimmed">
-            Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period. 
+            Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period.
             You can customize exceptions (half days, custom times) via the HR Management page after approval.
           </Text>
         </Stack>
@@ -710,28 +763,28 @@ export default function LeaveManagementPage() {
       <Modal opened={approveRequestOpen} onClose={() => setApproveRequestOpen(false)} title="Approve Leave Request">
         <Stack>
           {selectedRequest && (() => {
-            const leaveType = Array.isArray(selectedRequest.leave_types) 
-              ? selectedRequest.leave_types[0] 
+            const leaveType = Array.isArray(selectedRequest.leave_types)
+              ? selectedRequest.leave_types[0]
               : selectedRequest.leave_types
             const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-            
+
             return (
-            <>
-              <Text>
-                <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
-              </Text>
-              <Text>
-                <strong>Leave Type:</strong> {leaveTypeName}
-              </Text>
-              <Text>
-                <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-              </Text>
-              {selectedRequest.reason && (
+              <>
                 <Text>
-                  <strong>Reason:</strong> {selectedRequest.reason}
+                  <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
                 </Text>
-              )}
-            </>
+                <Text>
+                  <strong>Leave Type:</strong> {leaveTypeName}
+                </Text>
+                <Text>
+                  <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                </Text>
+                {selectedRequest.reason && (
+                  <Text>
+                    <strong>Reason:</strong> {selectedRequest.reason}
+                  </Text>
+                )}
+              </>
             )
           })()}
           <Group justify="flex-end">
@@ -746,23 +799,23 @@ export default function LeaveManagementPage() {
         <form onSubmit={approveForm.onSubmit(handleRejectRequest)}>
           <Stack>
             {selectedRequest && (() => {
-              const leaveType = Array.isArray(selectedRequest.leave_types) 
-                ? selectedRequest.leave_types[0] 
+              const leaveType = Array.isArray(selectedRequest.leave_types)
+                ? selectedRequest.leave_types[0]
                 : selectedRequest.leave_types
               const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-              
+
               return (
-              <>
-                <Text>
-                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
-                </Text>
-                <Text>
-                  <strong>Leave Type:</strong> {leaveTypeName}
-                </Text>
-                <Text>
-                  <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-                </Text>
-              </>
+                <>
+                  <Text>
+                    <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
+                  </Text>
+                  <Text>
+                    <strong>Leave Type:</strong> {leaveTypeName}
+                  </Text>
+                  <Text>
+                    <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                  </Text>
+                </>
               )
             })()}
             <TextInput
@@ -783,52 +836,52 @@ export default function LeaveManagementPage() {
         <form onSubmit={changeStatusForm.onSubmit(handleChangeStatus)}>
           <Stack>
             {selectedRequest && (() => {
-              const leaveType = Array.isArray(selectedRequest.leave_types) 
-                ? selectedRequest.leave_types[0] 
+              const leaveType = Array.isArray(selectedRequest.leave_types)
+                ? selectedRequest.leave_types[0]
                 : selectedRequest.leave_types
               const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-              
+
               return (
-              <>
-                <Text>
-                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
-                </Text>
-                <Text>
-                  <strong>Leave Type:</strong> {leaveTypeName}
-                </Text>
-                <Text>
-                  <strong>Period:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-                </Text>
-                <Text size="sm" c="dimmed">
-                  <strong>Current Status:</strong> {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1)}
-                </Text>
-                <Select
-                  label="New Status"
-                  placeholder="Select status"
-                  required
-                  data={[
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'approved', label: 'Approved' },
-                    { value: 'rejected', label: 'Rejected' },
-                    { value: 'cancelled', label: 'Cancelled' },
-                  ]}
-                  {...changeStatusForm.getInputProps('status')}
-                />
-                {changeStatusForm.values.status === 'rejected' && (
-                  <TextInput
-                    label="Rejection Reason"
-                    placeholder="Optional"
-                    {...changeStatusForm.getInputProps('rejection_reason')}
+                <>
+                  <Text>
+                    <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
+                  </Text>
+                  <Text>
+                    <strong>Leave Type:</strong> {leaveTypeName}
+                  </Text>
+                  <Text>
+                    <strong>Period:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <strong>Current Status:</strong> {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1)}
+                  </Text>
+                  <Select
+                    label="New Status"
+                    placeholder="Select status"
+                    required
+                    data={[
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'approved', label: 'Approved' },
+                      { value: 'rejected', label: 'Rejected' },
+                      { value: 'cancelled', label: 'Cancelled' },
+                    ]}
+                    {...changeStatusForm.getInputProps('status')}
                   />
-                )}
-                <Text size="sm" c="dimmed">
-                  Note: Changing status will automatically update leave balances. If approving, schedule exceptions will be created.
-                </Text>
-                <Group justify="flex-end">
-                  <Button variant="default" onClick={() => setChangeStatusOpen(false)}>Cancel</Button>
-                  <Button type="submit">Update Status</Button>
-                </Group>
-              </>
+                  {changeStatusForm.values.status === 'rejected' && (
+                    <TextInput
+                      label="Rejection Reason"
+                      placeholder="Optional"
+                      {...changeStatusForm.getInputProps('rejection_reason')}
+                    />
+                  )}
+                  <Text size="sm" c="dimmed">
+                    Note: Changing status will automatically update leave balances. If approving, schedule exceptions will be created.
+                  </Text>
+                  <Group justify="flex-end">
+                    <Button variant="default" onClick={() => setChangeStatusOpen(false)}>Cancel</Button>
+                    <Button type="submit">Update Status</Button>
+                  </Group>
+                </>
               )
             })()}
           </Stack>
@@ -862,7 +915,7 @@ export default function LeaveManagementPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Container >
   )
 }
 
