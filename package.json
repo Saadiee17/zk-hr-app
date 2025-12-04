@@ -16,6 +16,7 @@
     "@mantine/notifications": "^8.3.6",
     "@supabase/supabase-js": "^2.78.0",
     "@tabler/icons-react": "^3.35.0",
+    "@vercel/analytics": "^1.6.1",
     "bcryptjs": "^3.0.3",
     "dayjs": "1.11.19",
     "jose": "^6.1.0",

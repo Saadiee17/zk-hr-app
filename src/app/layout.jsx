@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
@@ -32,11 +33,12 @@ export default function RootLayout({ children }) {
       <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
-          <AppShellWrapper>
-            {children}
-          </AppShellWrapper>
+            <AppShellWrapper>
+              {children}
+            </AppShellWrapper>
           </AuthProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
