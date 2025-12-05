@@ -103,7 +103,6 @@ export function LeaveRequestForm({
         value={startDate}
         onChange={setStartDate}
         required
-        minDate={new Date()}
       />
 
       <DatePickerInput
@@ -112,7 +111,7 @@ export function LeaveRequestForm({
         value={endDate}
         onChange={setEndDate}
         required
-        minDate={startDate || new Date()}
+        minDate={startDate}
       />
 
       <Textarea

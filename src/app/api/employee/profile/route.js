@@ -54,16 +54,17 @@ export async function GET(req) {
         .single()
       if (tz) scheduleName = tz.name
     } else if (employee.department_id) {
-      const { data: schedule } = await supabase
+      const { data: schedules } = await supabase
         .from('schedules')
         .select('tz_id_1')
         .eq('department_id', employee.department_id)
-        .single()
-      if (schedule?.tz_id_1) {
+        .limit(1)
+
+      if (schedules && schedules.length > 0 && schedules[0].tz_id_1) {
         const { data: tz } = await supabase
           .from('time_zones')
           .select('name')
-          .eq('id', schedule.tz_id_1)
+          .eq('id', schedules[0].tz_id_1)
           .single()
         if (tz) scheduleName = tz.name
       }
@@ -107,7 +108,7 @@ export async function PATCH(req) {
 
     // Only allow updating these specific fields
     const allowedFields = ['phone', 'email', 'address', 'birthday']
-    
+
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updates[field] = body[field]

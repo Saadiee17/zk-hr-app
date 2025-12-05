@@ -8,6 +8,7 @@ export async function GET(req) {
     const session = await getSession(req)
     const url = new URL(req.url)
     let employee_id = url.searchParams.get('employee_id')
+    const status = url.searchParams.get('status')
 
     // Session-based access control: Non-admins can only see their own requests
     if (session && !isAdmin(session)) {
@@ -37,6 +38,11 @@ export async function GET(req) {
       query = query.eq('employee_id', employee_id)
     }
 
+    // Filter by status if provided
+    if (status) {
+      query = query.eq('status', status)
+    }
+
     const { data, error } = await query
 
     if (error) throw error
@@ -62,14 +68,14 @@ export async function POST(req) {
     console.log('[leave-requests] Final employee_id:', employee_id)
 
     if (!employee_id || !start_date || !end_date) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'employee_id, start_date, and end_date are required',
         received: { employee_id, start_date, end_date }
       }, { status: 400 })
     }
 
     if (!leave_type_id && !leave_type) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Either leave_type_id or leave_type is required',
         received: { leave_type_id, leave_type }
       }, { status: 400 })
@@ -104,7 +110,7 @@ export async function POST(req) {
       }
 
       if (!leaveTypeData) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: `Leave type '${leave_type}' (code: ${leaveTypeCode}) not found in database`,
           hint: 'Available leave types may need to be created first'
         }, { status: 400 })
@@ -143,11 +149,11 @@ export async function POST(req) {
       console.error('[leave-requests] Supabase error:', error)
       throw error
     }
-    
+
     // Update leave balance - add to pending if status is pending
     if (data.status === 'pending') {
       const currentYear = new Date().getFullYear()
-      
+
       // Check if balance exists
       const { data: existingBalance, error: balanceCheckError } = await supabase
         .from('leave_balances')
@@ -189,12 +195,12 @@ export async function POST(req) {
           })
       }
     }
-    
+
     console.log('[leave-requests] Successfully created:', data)
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('[leave-requests] POST error:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: error.message || 'Failed to create leave request',
       details: error.details || error.hint || null
     }, { status: 500 })

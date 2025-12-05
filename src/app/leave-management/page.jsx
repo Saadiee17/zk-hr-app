@@ -1,17 +1,28 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Container, Title, Paper, Tabs, Text, TextInput, NumberInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Badge, Divider } from '@mantine/core'
 import { IconPencil, IconTrash, IconEdit, IconPlus, IconCalendar, IconCheck, IconX, IconRefresh, IconSettings, IconCalendarStats, IconSearch, IconFilter } from '@tabler/icons-react'
 import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
 import { DatePickerInput } from '@mantine/dates'
+import { LeaveBalanceCard } from '@/components/shared/LeaveBalanceCard'
+import { UniversalTabs } from '@/components/shared/UniversalTabs'
+import { UniversalTable } from '@/components/shared/UniversalTable'
 import { LeaveStatusBadge } from '@/components/shared/LeaveStatusBadge'
 import { LeaveRequestForm } from '@/components/shared/LeaveRequestForm'
 import { formatEmployeeName, toYMD } from '@/utils/attendanceUtils'
+import { formatDateFriendly } from '@/utils/dateFormatting'
 
 export default function LeaveManagementPage() {
-  const [activeTab, setActiveTab] = useState('types')
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'types')
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
 
   // Leave Types state
   const [leaveTypes, setLeaveTypes] = useState([])
@@ -83,6 +94,8 @@ export default function LeaveManagementPage() {
       setLeaveBalancesLoading(false)
     }
   }
+
+
 
   useEffect(() => {
     fetchLeaveTypes()
@@ -437,24 +450,15 @@ export default function LeaveManagementPage() {
         </Group>
       </Stack>
 
-      <Tabs
-        value={activeTab}
-        onChange={setActiveTab}
-        variant="pills"
-        radius="md"
-        styles={{
-          list: { backgroundColor: 'white', padding: '4px', borderRadius: '12px', border: '1px solid #e9ecef' },
-          tab: { fontWeight: 600 }
-        }}
-      >
-        <Tabs.List mb="lg">
-          <Tabs.Tab value="types" leftSection={<IconSettings size={16} />}>Leave Types</Tabs.Tab>
-          <Tabs.Tab value="requests" leftSection={<IconCalendar size={16} />}>Leave Requests</Tabs.Tab>
-          <Tabs.Tab value="balances" leftSection={<IconCalendarStats size={16} />}>Leave Balances</Tabs.Tab>
-        </Tabs.List>
+      <UniversalTabs value={activeTab} onChange={setActiveTab}>
+        <UniversalTabs.List mb="lg">
+          <UniversalTabs.Tab value="types" leftSection={<IconSettings size={16} />}>Leave Types</UniversalTabs.Tab>
+          <UniversalTabs.Tab value="requests" leftSection={<IconCalendar size={16} />}>Leave Requests</UniversalTabs.Tab>
+          <UniversalTabs.Tab value="balances" leftSection={<IconCalendarStats size={16} />}>Leave Balances</UniversalTabs.Tab>
+        </UniversalTabs.List>
 
         {/* Leave Types Tab */}
-        <Tabs.Panel value="types" pt="md">
+        <UniversalTabs.Panel value="types" pt="md">
           <Stack gap="md">
             <Group justify="space-between">
               <div>
@@ -466,61 +470,59 @@ export default function LeaveManagementPage() {
               </Button>
             </Group>
 
-            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
-              <Table striped highlightOnHover verticalSpacing="sm">
-                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                  <Table.Tr>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>Code</Table.Th>
-                    <Table.Th>Max Days/Year</Table.Th>
-                    <Table.Th>Requires Approval</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Actions</Table.Th>
+            <UniversalTable>
+              <UniversalTable.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Code</Table.Th>
+                  <Table.Th>Max Days/Year</Table.Th>
+                  <Table.Th>Requires Approval</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                </Table.Tr>
+              </UniversalTable.Thead>
+              <UniversalTable.Tbody>
+                {leaveTypes.map((type) => (
+                  <Table.Tr key={type.id}>
+                    <Table.Td fw={500}>{type.name}</Table.Td>
+                    <Table.Td><Badge variant="dot" color="gray">{type.code}</Badge></Table.Td>
+                    <Table.Td>{type.max_days_per_year ?? 'Unlimited'}</Table.Td>
+                    <Table.Td>
+                      <Badge color={type.requires_approval ? 'blue' : 'gray'} variant="light">
+                        {type.requires_approval ? 'Required' : 'Optional'}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={type.is_active ? 'green' : 'gray'} variant="light">
+                        {type.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditType(type)}>
+                          <IconEdit size={18} />
+                        </ActionIcon>
+                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteType(type)}>
+                          <IconTrash size={18} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
                   </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {leaveTypes.map((type) => (
-                    <Table.Tr key={type.id}>
-                      <Table.Td fw={500}>{type.name}</Table.Td>
-                      <Table.Td><Badge variant="dot" color="gray">{type.code}</Badge></Table.Td>
-                      <Table.Td>{type.max_days_per_year ?? 'Unlimited'}</Table.Td>
-                      <Table.Td>
-                        <Badge color={type.requires_approval ? 'blue' : 'gray'} variant="light">
-                          {type.requires_approval ? 'Required' : 'Optional'}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={type.is_active ? 'green' : 'gray'} variant="light">
-                          {type.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon variant="subtle" color="blue" onClick={() => handleEditType(type)}>
-                            <IconEdit size={18} />
-                          </ActionIcon>
-                          <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteType(type)}>
-                            <IconTrash size={18} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                  {leaveTypes.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={6}>
-                        <Text c="dimmed" ta="center" py="xl">{leaveTypesLoading ? 'Loading...' : 'No leave types found'}</Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Paper>
+                ))}
+                {leaveTypes.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text c="dimmed" ta="center" py="xl">{leaveTypesLoading ? 'Loading...' : 'No leave types found'}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </UniversalTable.Tbody>
+            </UniversalTable>
           </Stack>
-        </Tabs.Panel>
+        </UniversalTabs.Panel>
 
         {/* Leave Requests Tab */}
-        <Tabs.Panel value="requests" pt="md">
+        <UniversalTabs.Panel value="requests" pt="md">
           <Stack gap="md">
             <Group justify="space-between" align="flex-end">
               <div>
@@ -532,113 +534,117 @@ export default function LeaveManagementPage() {
               </Button>
             </Group>
 
-            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
-              <Table striped highlightOnHover verticalSpacing="sm">
-                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                  <Table.Tr>
-                    <Table.Th>Employee</Table.Th>
-                    <Table.Th>Leave Type</Table.Th>
-                    <Table.Th>Duration</Table.Th>
-                    <Table.Th>Days</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Requested</Table.Th>
-                    <Table.Th>Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {leaveRequests.map((request) => {
-                    // Handle Supabase join: leave_types might be an object or array
-                    const leaveType = Array.isArray(request.leave_types)
-                      ? request.leave_types[0]
-                      : request.leave_types
-                    const leaveTypeName = leaveType?.name || leaveType?.code || '-'
+            <UniversalTable>
+              <UniversalTable.Thead>
+                <Table.Tr>
+                  <Table.Th>Employee</Table.Th>
+                  <Table.Th>Leave Type</Table.Th>
+                  <Table.Th>Duration</Table.Th>
+                  <Table.Th>Days</Table.Th>
+                  <Table.Th>Reason</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Requested</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                </Table.Tr>
+              </UniversalTable.Thead>
+              <UniversalTable.Tbody>
+                {leaveRequests.map((request) => {
+                  // Handle Supabase join: leave_types might be an object or array
+                  const leaveType = Array.isArray(request.leave_types)
+                    ? request.leave_types[0]
+                    : request.leave_types
+                  const leaveTypeName = leaveType?.name || leaveType?.code || '-'
 
-                    return (
-                      <Table.Tr key={request.id}>
-                        <Table.Td>
-                          <Group gap="sm">
-                            <div>
-                              <Text size="sm" fw={500}>{formatEmployeeName(request.employee)}</Text>
-                              {request.employee?.department?.name && (
-                                <Text size="xs" c="dimmed">{request.employee.department.name}</Text>
-                              )}
-                            </div>
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge variant="dot" color="blue">{leaveTypeName}</Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm">{request.start_date}</Text>
-                          <Text size="xs" c="dimmed">to {request.end_date}</Text>
-                        </Table.Td>
-                        <Table.Td fw={600}>{request.total_days}</Table.Td>
-                        <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
-                        <Table.Td>
-                          <Text size="sm" c="dimmed">{request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            {request.status === 'pending' && (
-                              <>
-                                <ActionIcon
-                                  variant="light"
-                                  color="green"
-                                  size="md"
-                                  onClick={() => {
-                                    setSelectedRequest(request)
-                                    setApproveRequestOpen(true)
-                                  }}
-                                >
-                                  <IconCheck size={16} />
-                                </ActionIcon>
-                                <ActionIcon
-                                  variant="light"
-                                  color="red"
-                                  size="md"
-                                  onClick={() => {
-                                    setSelectedRequest(request)
-                                    setRejectRequestOpen(true)
-                                  }}
-                                >
-                                  <IconX size={16} />
-                                </ActionIcon>
-                              </>
+                  return (
+                    <Table.Tr key={request.id}>
+                      <Table.Td>
+                        <Group gap="sm">
+                          <div>
+                            <Text size="sm" fw={500}>{formatEmployeeName(request.employee)}</Text>
+                            {request.employee?.department?.name && (
+                              <Text size="xs" c="dimmed">{request.employee.department.name}</Text>
                             )}
-                            <ActionIcon
-                              variant="subtle"
-                              color="blue"
-                              onClick={() => {
-                                setSelectedRequest(request)
-                                changeStatusForm.setValues({
-                                  status: request.status,
-                                  rejection_reason: request.rejection_reason || '',
-                                })
-                                setChangeStatusOpen(true)
-                              }}
-                            >
-                              <IconEdit size={18} />
-                            </ActionIcon>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    )
-                  })}
-                  {leaveRequests.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={7}>
-                        <Text c="dimmed" ta="center" py="xl">{leaveRequestsLoading ? 'Loading...' : 'No leave requests found'}</Text>
+                          </div>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="dot" color="blue">{leaveTypeName}</Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{formatDateFriendly(request.start_date)}</Text>
+                        <Text size="xs" c="dimmed">to {formatDateFriendly(request.end_date)}</Text>
+                      </Table.Td>
+                      <Table.Td fw={600}>{request.total_days}</Table.Td>
+                      <Table.Td>
+                        <Text size="sm" lineClamp={2} c={request.reason ? undefined : 'dimmed'}>
+                          {request.reason || '-'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">{request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          {request.status === 'pending' && (
+                            <>
+                              <ActionIcon
+                                variant="light"
+                                color="green"
+                                size="md"
+                                onClick={() => {
+                                  setSelectedRequest(request)
+                                  setApproveRequestOpen(true)
+                                }}
+                              >
+                                <IconCheck size={16} />
+                              </ActionIcon>
+                              <ActionIcon
+                                variant="light"
+                                color="red"
+                                size="md"
+                                onClick={() => {
+                                  setSelectedRequest(request)
+                                  setRejectRequestOpen(true)
+                                }}
+                              >
+                                <IconX size={16} />
+                              </ActionIcon>
+                            </>
+                          )}
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => {
+                              setSelectedRequest(request)
+                              changeStatusForm.setValues({
+                                status: request.status,
+                                rejection_reason: request.rejection_reason || '',
+                              })
+                              setChangeStatusOpen(true)
+                            }}
+                          >
+                            <IconEdit size={18} />
+                          </ActionIcon>
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Paper>
+                  )
+                })}
+                {leaveRequests.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={7}>
+                      <Text c="dimmed" ta="center" py="xl">{leaveRequestsLoading ? 'Loading...' : 'No leave requests found'}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </UniversalTable.Tbody>
+            </UniversalTable>
           </Stack>
-        </Tabs.Panel>
+        </UniversalTabs.Panel>
 
         {/* Leave Balances Tab */}
-        <Tabs.Panel value="balances" pt="md">
+        <UniversalTabs.Panel value="balances" pt="md">
           <Stack gap="md">
             <Group justify="space-between" align="flex-end">
               <div>
@@ -648,54 +654,52 @@ export default function LeaveManagementPage() {
               {/* Add search/filter here later */}
             </Group>
 
-            <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
-              <Table striped highlightOnHover verticalSpacing="sm">
-                <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                  <Table.Tr>
-                    <Table.Th>Employee</Table.Th>
-                    <Table.Th>Leave Type</Table.Th>
-                    <Table.Th>Total Allotted</Table.Th>
-                    <Table.Th>Used</Table.Th>
-                    <Table.Th>Pending</Table.Th>
-                    <Table.Th>Remaining</Table.Th>
-                    <Table.Th>Year</Table.Th>
-                    <Table.Th>Actions</Table.Th>
+            <UniversalTable>
+              <UniversalTable.Thead>
+                <Table.Tr>
+                  <Table.Th>Employee</Table.Th>
+                  <Table.Th>Leave Type</Table.Th>
+                  <Table.Th>Total Allotted</Table.Th>
+                  <Table.Th>Used</Table.Th>
+                  <Table.Th>Pending</Table.Th>
+                  <Table.Th>Remaining</Table.Th>
+                  <Table.Th>Year</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                </Table.Tr>
+              </UniversalTable.Thead>
+              <UniversalTable.Tbody>
+                {leaveBalances.map((balance) => (
+                  <Table.Tr key={balance.id}>
+                    <Table.Td fw={500}>
+                      {formatEmployeeName(balance.employee)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="dot" color="gray">{balance.leave_type?.name || '-'}</Badge>
+                    </Table.Td>
+                    <Table.Td>{balance.total_allotted || 0}</Table.Td>
+                    <Table.Td c="blue" fw={500}>{balance.used || 0}</Table.Td>
+                    <Table.Td c="yellow" fw={500}>{balance.pending || 0}</Table.Td>
+                    <Table.Td c="green" fw={700}>{balance.remaining || 0}</Table.Td>
+                    <Table.Td>{balance.year}</Table.Td>
+                    <Table.Td>
+                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditBalance(balance)}>
+                        <IconEdit size={18} />
+                      </ActionIcon>
+                    </Table.Td>
                   </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {leaveBalances.map((balance) => (
-                    <Table.Tr key={balance.id}>
-                      <Table.Td fw={500}>
-                        {formatEmployeeName(balance.employee)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="dot" color="gray">{balance.leave_type?.name || '-'}</Badge>
-                      </Table.Td>
-                      <Table.Td>{balance.total_allotted || 0}</Table.Td>
-                      <Table.Td c="blue" fw={500}>{balance.used || 0}</Table.Td>
-                      <Table.Td c="yellow" fw={500}>{balance.pending || 0}</Table.Td>
-                      <Table.Td c="green" fw={700}>{balance.remaining || 0}</Table.Td>
-                      <Table.Td>{balance.year}</Table.Td>
-                      <Table.Td>
-                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditBalance(balance)}>
-                          <IconEdit size={18} />
-                        </ActionIcon>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                  {leaveBalances.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={8}>
-                        <Text c="dimmed" ta="center" py="xl">{leaveBalancesLoading ? 'Loading...' : 'No leave balances found'}</Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Paper>
+                ))}
+                {leaveBalances.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={8}>
+                      <Text c="dimmed" ta="center" py="xl">{leaveBalancesLoading ? 'Loading...' : 'No leave balances found'}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </UniversalTable.Tbody>
+            </UniversalTable>
           </Stack>
-        </Tabs.Panel>
-      </Tabs>
+        </UniversalTabs.Panel>
+      </UniversalTabs>
 
       {/* Create Leave Type Modal */}
       <Modal opened={createTypeOpen} onClose={() => setCreateTypeOpen(false)} title="Create Leave Type">

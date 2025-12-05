@@ -7,12 +7,12 @@
  */
 export const formatUTC12Hour = (timestamp) => {
   if (!timestamp) return 'N/A'
-  
+
   try {
     const date = new Date(timestamp)
     // Add 5 hours (Pakistan UTC+5) to display in local time
     const pakistaniDate = new Date(date.getTime() + 5 * 60 * 60 * 1000)
-    
+
     return pakistaniDate.toLocaleString('en-US', {
       month: '2-digit',
       day: '2-digit',
@@ -37,12 +37,12 @@ export const formatUTC12Hour = (timestamp) => {
  */
 export const formatUTC12HourTime = (timestamp) => {
   if (!timestamp) return 'N/A'
-  
+
   try {
     const date = new Date(timestamp)
     // Add 5 hours (Pakistan UTC+5) to display in local time
     const pakistaniDate = new Date(date.getTime() + 5 * 60 * 60 * 1000)
-    
+
     return pakistaniDate.toLocaleString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -64,12 +64,12 @@ export const formatUTC12HourTime = (timestamp) => {
  */
 export const formatUTCDate = (timestamp) => {
   if (!timestamp) return 'N/A'
-  
+
   try {
     const date = new Date(timestamp)
     // Add 5 hours (Pakistan UTC+5) to get the correct date
     const pakistaniDate = new Date(date.getTime() + 5 * 60 * 60 * 1000)
-    
+
     return pakistaniDate.toLocaleString('en-US', {
       month: '2-digit',
       day: '2-digit',
@@ -80,4 +80,16 @@ export const formatUTCDate = (timestamp) => {
     console.error('Date formatting error:', error, timestamp)
     return 'Invalid Date'
   }
+}
+
+/**
+ * Format date to friendly format "DD MMM YYYY"
+ * Example: 2025-12-06 → 06 Dec 2025
+ * @param {string|Date} dateStr - Date string or object
+ * @returns {string} Formatted date
+ */
+export const formatDateFriendly = (dateStr) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }

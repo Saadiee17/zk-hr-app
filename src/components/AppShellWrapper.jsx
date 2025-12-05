@@ -8,21 +8,20 @@ import { EmployeeNavbar } from './EmployeeNavbar'
 
 export function AppShellWrapper({ children }) {
   const theme = useMantineTheme()
-  const [opened, { toggle, close }] = useDisclosure(true)
+  const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure(false)
+  const [desktopCollapsed, { toggle: toggleDesktop }] = useDisclosure(false)
   const pathname = usePathname()
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`)
 
   const navbarBg = theme.colorScheme === 'dark' ? theme.colors.dark[8] : theme.white
-  const mainBg = theme.colorScheme === 'dark' ? theme.colors.dark[7] : theme.colors.gray[0]
 
   const handleNavigate = () => {
     if (isMobile) {
-      close()
+      closeMobile()
     }
   }
 
   // Check if we're on an employee route (excluding auth pages)
-  // IMPORTANT: Use exact match for '/employee' to avoid matching '/employees'
   const isEmployeeRoute = pathname?.startsWith('/employee/') &&
     !pathname.includes('/login') &&
     !pathname.includes('/setup-password')
@@ -37,37 +36,39 @@ export function AppShellWrapper({ children }) {
   return (
     <AppShell
       padding={0}
-      header={{ height: 56 }}
       navbar={{
-        width: 250,
+        width: desktopCollapsed ? 80 : 280,
         breakpoint: 'sm',
-        collapsed: { mobile: !opened, desktop: !opened },
+        collapsed: { mobile: !mobileOpened },
       }}
       style={{
         background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
       }}
     >
-      <AppShell.Header style={{ backgroundColor: theme.colorScheme === 'dark' ? theme.colors.dark[6] : theme.white }}>
-        <Group h="100%" px="md" justify="space-between">
-          <Group gap="sm">
-            <Burger opened={opened} onClick={toggle} size="sm" color={theme.colors.gray[6]} />
-            <Text fw={600}>
-              {isEmployeeRoute ? 'Employee Portal' : 'HR Attendance Dashboard'}
-            </Text>
-          </Group>
-        </Group>
-      </AppShell.Header>
       <AppShell.Navbar
-        p="md"
+        p={desktopCollapsed ? "xs" : "md"}
         className="app-navbar"
-        style={{ backgroundColor: navbarBg }}
+        style={{
+          backgroundColor: navbarBg,
+          transition: 'width 0.3s ease',
+          overflowX: 'hidden'
+        }}
       >
         {isEmployeeRoute ? (
-          <EmployeeNavbar onNavigate={handleNavigate} />
+          <EmployeeNavbar
+            onNavigate={handleNavigate}
+            isCollapsed={desktopCollapsed}
+            toggleCollapse={toggleDesktop}
+          />
         ) : (
-          <Navbar onNavigate={handleNavigate} />
+          <Navbar
+            onNavigate={handleNavigate}
+            isCollapsed={desktopCollapsed}
+            toggleCollapse={toggleDesktop}
+          />
         )}
       </AppShell.Navbar>
+
       <AppShell.Main
         className="app-main"
         style={{
@@ -75,10 +76,14 @@ export function AppShellWrapper({ children }) {
           width: '100%',
           padding: 0,
           paddingLeft: 0,
-          paddingTop: 56, // Match header height to prevent overlap
           marginLeft: 0,
         }}
       >
+        {/* Mobile Toggle Button (Floating) */}
+        <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 99, display: isMobile ? 'block' : 'none' }}>
+          <Burger opened={mobileOpened} onClick={toggleMobile} size="sm" />
+        </div>
+
         {children}
       </AppShell.Main>
     </AppShell>

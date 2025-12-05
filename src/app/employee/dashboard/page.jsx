@@ -5,10 +5,8 @@ import {
   Container,
   Title,
   Text,
-  Paper,
   Grid,
   Stack,
-  Card,
   Group,
   Button,
   Badge,
@@ -16,7 +14,10 @@ import {
   LoadingOverlay,
   ActionIcon,
   Divider,
-  Progress,
+  Paper,
+  TextInput,
+  SimpleGrid,
+  ThemeIcon
 } from '@mantine/core'
 import {
   IconCalendar,
@@ -25,34 +26,24 @@ import {
   IconSettings,
   IconChevronDown,
   IconChevronRight,
+  IconUser,
+  IconHourglass,
+  IconBriefcase,
+  IconSearch,
+  IconCheck,
+  IconX,
+  IconMoodSmile,
+  IconMoodEmpty
 } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { formatUTC12Hour, formatUTC12HourTime } from '@/utils/dateFormatting'
+import { formatUTC12Hour, formatUTC12HourTime, formatDateFriendly } from '@/utils/dateFormatting'
 import { AdminAccessBanner } from '@/components/AdminAccessBanner'
-
 import { formatHoursMinutes, formatDateWithDay } from '@/utils/attendanceUtils'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-
-// Calculate working days from start of month up to current date (excluding weekends)
-const getWorkingDaysInMonth = (year, month, currentDate) => {
-  const firstDay = new Date(year, month, 1)
-  const today = currentDate || new Date()
-  const currentDay = today.getDate()
-  let workingDays = 0
-  
-  // Only count days from start of month up to today
-  for (let day = 1; day <= currentDay; day++) {
-    const checkDate = new Date(year, month, day)
-    const dayOfWeek = checkDate.getDay()
-    // Exclude Saturday (6) and Sunday (0)
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      workingDays++
-    }
-  }
-  
-  return workingDays
-}
+import { ModernStatCard } from '@/components/shared/ModernStatCard'
+import { DarkStatsGroup } from '@/components/shared/DarkStatsGroup'
+import { UniversalTable } from '@/components/shared/UniversalTable'
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuth()
@@ -62,6 +53,7 @@ export default function EmployeeDashboardPage() {
     pendingRequests: 0,
     monthWorkHours: 0,
     monthRequiredHours: 0,
+    monthlyReports: [], // Added to store full month data
   })
   const [recentLogs, setRecentLogs] = useState([])
   const [expandedRows, setExpandedRows] = useState(new Set())
@@ -106,10 +98,11 @@ export default function EmployeeDashboardPage() {
       )
       const reportsData = await reportsRes.json()
       const totalHours = reportsData.data?.reduce((sum, day) => sum + (day.durationHours || 0), 0) || 0
-      
-      // Calculate working days (excluding weekends) from start of month up to today
-      const workingDays = getWorkingDaysInMonth(now.getFullYear(), now.getMonth(), now)
-      const requiredHours = workingDays * 9 // 9 hours per working day
+
+      // Calculate required hours based on scheduled days (excluding days off and leaves)
+      // We use the API data itself to determine working days
+      const scheduledDaysCount = reportsData.data?.filter(r => r.status !== 'Day Off' && r.status !== 'On Leave').length || 0
+      const requiredHours = scheduledDaysCount * 9 // 9 hours per working day
 
       // Fetch recent attendance logs (last 7 days)
       const sevenDaysAgo = new Date()
@@ -126,6 +119,7 @@ export default function EmployeeDashboardPage() {
         pendingRequests: pending,
         monthWorkHours: totalHours,
         monthRequiredHours: requiredHours,
+        monthlyReports: reportsData.data || [],
       })
 
       setRecentLogs(recentReportsData.data?.slice(0, 7) || [])
@@ -146,6 +140,51 @@ export default function EmployeeDashboardPage() {
     setExpandedRows(newExpanded)
   }
 
+  // Calculate derived stats using API data
+  // scheduledDays: Days that are not 'Day Off' or 'On Leave'
+  const scheduledDays = stats.monthlyReports.filter(r => r.status !== 'Day Off' && r.status !== 'On Leave').length
+
+  // presentDays: Days where employee has punched in (inTime is not null)
+  const presentDays = stats.monthlyReports.filter(r => r.inTime !== null).length
+
+  // Attendance Rate: Present / Scheduled
+  const attendanceRate = scheduledDays > 0 ? Math.round((presentDays / scheduledDays) * 100) : 0
+
+  // Status Counts (using exact status strings from API)
+  const lateCount = stats.monthlyReports.filter(r => r.status === 'Late-In').length
+  const onTimeCount = stats.monthlyReports.filter(r => r.status === 'On-Time' || r.status === 'Present').length
+  const absentCount = stats.monthlyReports.filter(r => r.status === 'Absent').length
+
+  // Find today's log
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayLog = recentLogs.find(log => log.date === todayStr)
+
+  const darkStatsData = [
+    {
+      label: "TODAY'S STATUS",
+      value: todayLog?.status || 'Not Checked In',
+      icon: IconUser,
+      color: todayLog?.status === 'Present' || todayLog?.status === 'On-Time' ? 'green' : (todayLog?.status === 'Absent' ? 'red' : 'gray')
+    },
+    {
+      label: "CHECK IN",
+      value: todayLog?.inTime ? formatUTC12HourTime(todayLog.inTime) : '--:--',
+      icon: IconClock,
+      color: 'blue'
+    },
+    {
+      label: "CHECK OUT",
+      value: todayLog?.outTime ? formatUTC12HourTime(todayLog.outTime) : '--:--',
+      icon: IconClock,
+      color: 'orange'
+    },
+    {
+      label: "DURATION",
+      value: todayLog?.durationHours ? formatHoursMinutes(todayLog.durationHours) : '0h 0m',
+      icon: IconHourglass,
+      color: 'grape'
+    },
+  ]
 
   return (
     <Container size="xl" py="xl">
@@ -153,362 +192,248 @@ export default function EmployeeDashboardPage() {
 
       <Stack gap="xl">
         <AdminAccessBanner />
-        
-        {/* Welcome Section */}
-        <Group justify="space-between" align="flex-start">
+
+        {/* Header */}
+        <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={1}>
-              Welcome back, {user?.firstName}!
-            </Title>
-            <Text c="dimmed" size="lg">
-              Here's your attendance overview
+            <Text c="dimmed" size="sm" fw={600} mb={4} tt="uppercase" ls={1}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </Text>
+            <Title order={1}>
+              Good Morning, {user?.firstName}
+            </Title>
           </div>
           {user?.isAdmin && (
             <Button
               component={Link}
               href="/"
-              size="lg"
-              variant="filled"
+              size="md"
+              variant="light"
               color="blue"
-              leftSection={<IconSettings size={20} />}
-              style={{ fontWeight: 600 }}
+              leftSection={<IconSettings size={18} />}
             >
-              Go to Admin Dashboard
+              Admin Dashboard
             </Button>
           )}
         </Group>
 
-        {/* Stats Cards */}
+        {/* Top Cards */}
         <Grid gutter="md">
-          {/* Leave Balance Card */}
-          <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card 
-              shadow="sm" 
-              padding="xl" 
-              radius="lg" 
-              withBorder
-              style={{ 
-                height: '100%',
-                transition: 'all 0.3s ease',
-                borderLeft: '4px solid var(--mantine-color-blue-6)',
-                background: 'linear-gradient(135deg, var(--mantine-color-blue-0) 0%, var(--mantine-color-white) 100%)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 12px 24px rgba(37, 99, 235, 0.15)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
+          {/* Card 1: Attendance Rate */}
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+            <ModernStatCard
+              title="Attendance Rate"
+              value={`${attendanceRate}%`}
+              badgeLabel="RATE"
+              color="blue"
+              borderPosition="left"
+            />
+          </Grid.Col>
+
+          {/* Card 2: Pending Requests */}
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+            <ModernStatCard
+              title="Pending Requests"
+              value={stats.pendingRequests}
+              badgeLabel={stats.pendingRequests > 0 ? "WAITING" : "CLEAR"}
+              badgeColor={stats.pendingRequests > 0 ? "yellow" : "green"}
+              color="yellow"
+              borderPosition="right"
+            />
+          </Grid.Col>
+
+          {/* Card 3: Month Hours */}
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+            <ModernStatCard
+              title="Month Hours"
+              value={formatHoursMinutes(stats.monthWorkHours)}
+              badgeLabel={`/ ${formatHoursMinutes(stats.monthRequiredHours)}`}
+              color="green"
+              borderPosition="right"
+            />
+          </Grid.Col>
+
+          {/* Card 4: Attendance Statuses */}
+          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+            <ModernStatCard
+              title="Attendance Status"
+              color="red"
+              borderPosition="right"
             >
-              <Stack gap="md">
-                <Group justify="space-between" align="flex-start">
-                  <div>
-                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
-                      Leave Balance
-                    </Text>
-                    <Text size="lg" fw={700} c="blue">
-                      {stats.leaveBalance.length} Types
-                    </Text>
-                  </div>
-                  <div style={{
-                    padding: '12px',
-                    borderRadius: '12px',
-                    background: 'var(--mantine-color-blue-1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <IconCalendar size={24} color="var(--mantine-color-blue-6)" />
-                  </div>
-                </Group>
-                <Divider />
-                <Stack gap={8}>
-                  {stats.leaveBalance.length > 0 ? (
-                    stats.leaveBalance.slice(0, 3).map((balance) => (
-                      <Group key={balance.id || `default-${balance.leave_type_id}`} justify="space-between" p="xs" style={{ borderRadius: '8px', background: 'var(--mantine-color-gray-0)' }}>
-                        <Text size="sm" fw={500}>{balance.leave_type?.name}</Text>
-                        <Badge 
-                          variant="light" 
-                          color="blue" 
-                          size="lg"
-                          radius="md"
-                          style={{ fontWeight: 600 }}
-                        >
-                          {balance.remaining || 0} days
-                        </Badge>
-                      </Group>
-                    ))
-                  ) : (
-                    <Text size="sm" c="dimmed" ta="center" py="md">
-                      No leave balance data
-                    </Text>
-                  )}
-                  {stats.leaveBalance.length > 3 && (
-                    <Text size="xs" c="dimmed" ta="center" mt={4}>
-                      +{stats.leaveBalance.length - 3} more
-                    </Text>
-                  )}
+              <Group gap="xs" align="center" style={{ height: '100%' }}>
+                <Stack gap={4} align="center" style={{ flex: 1 }}>
+                  <ThemeIcon variant="light" color="green" radius="md" size="lg">
+                    <IconCheck size={20} />
+                  </ThemeIcon>
+                  <Text size="lg" fw={700} lh={1}>{onTimeCount}</Text>
+                  <Text size="xs" c="dimmed" fw={600}>On Time</Text>
                 </Stack>
-              </Stack>
-            </Card>
-          </Grid.Col>
 
-          {/* Pending Requests Card */}
-          <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card 
-              shadow="sm" 
-              padding="xl" 
-              radius="lg" 
-              withBorder
-              style={{ 
-                height: '100%',
-                transition: 'all 0.3s ease',
-                borderLeft: '4px solid var(--mantine-color-yellow-6)',
-                background: 'linear-gradient(135deg, var(--mantine-color-yellow-0) 0%, var(--mantine-color-white) 100%)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 12px 24px rgba(234, 179, 8, 0.15)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap="md">
-                <Group justify="space-between" align="flex-start">
-                  <div>
-                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
-                      Pending Requests
-                    </Text>
-                    <Text size={36} fw={700} c="yellow" lh={1}>
-                      {stats.pendingRequests}
-                    </Text>
-                  </div>
-                  <div style={{
-                    padding: '12px',
-                    borderRadius: '12px',
-                    background: 'var(--mantine-color-yellow-1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <IconAlertCircle size={24} color="var(--mantine-color-yellow-6)" />
-                  </div>
-                </Group>
-                <Divider />
-                <Text size="sm" c="dimmed" fw={500}>
-                  Awaiting approval
-                </Text>
-              </Stack>
-            </Card>
-          </Grid.Col>
+                <Divider orientation="vertical" />
 
-          {/* This Month's Hours Card */}
-          <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-            <Card 
-              shadow="sm" 
-              padding="xl" 
-              radius="lg" 
-              withBorder
-              style={{ 
-                height: '100%',
-                transition: 'all 0.3s ease',
-                borderLeft: '4px solid var(--mantine-color-green-6)',
-                background: 'linear-gradient(135deg, var(--mantine-color-green-0) 0%, var(--mantine-color-white) 100%)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = '0 12px 24px rgba(34, 197, 94, 0.15)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = ''
-              }}
-            >
-              <Stack gap="md">
-                <Group justify="space-between" align="flex-start">
-                  <div style={{ flex: 1 }}>
-                    <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb={4}>
-                      This Month's Hours
-                    </Text>
-                    <Text size={32} fw={700} c="green" lh={1.2}>
-                      {formatHoursMinutes(stats.monthWorkHours)}
-                    </Text>
-                  </div>
-                  <div style={{
-                    padding: '12px',
-                    borderRadius: '12px',
-                    background: 'var(--mantine-color-green-1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <IconClock size={24} color="var(--mantine-color-green-6)" />
-                  </div>
-                </Group>
-                <Divider />
-                <div>
-                  <Group justify="space-between" mb={8}>
-                    <Text size="sm" c="dimmed" fw={500}>
-                      Progress
-                    </Text>
-                    <Text size="sm" fw={600} c="green">
-                      {stats.monthRequiredHours > 0 
-                        ? Math.round((stats.monthWorkHours / stats.monthRequiredHours) * 100) 
-                        : 0}%
-                    </Text>
-                  </Group>
-                  <Progress 
-                    value={stats.monthRequiredHours > 0 ? (stats.monthWorkHours / stats.monthRequiredHours) * 100 : 0} 
-                    color="green" 
-                    size="lg" 
-                    radius="xl"
-                    animated
-                  />
-                  <Text size="xs" c="dimmed" mt={8}>
-                    {formatHoursMinutes(stats.monthWorkHours)} / {formatHoursMinutes(stats.monthRequiredHours)} required
-                  </Text>
-                </div>
-              </Stack>
-            </Card>
+                <Stack gap={4} align="center" style={{ flex: 1 }}>
+                  <ThemeIcon variant="light" color="yellow" radius="md" size="lg">
+                    <IconClock size={20} />
+                  </ThemeIcon>
+                  <Text size="lg" fw={700} lh={1}>{lateCount}</Text>
+                  <Text size="xs" c="dimmed" fw={600}>Late</Text>
+                </Stack>
+
+                <Divider orientation="vertical" />
+
+                <Stack gap={4} align="center" style={{ flex: 1 }}>
+                  <ThemeIcon variant="light" color="red" radius="md" size="lg">
+                    <IconX size={20} />
+                  </ThemeIcon>
+                  <Text size="lg" fw={700} lh={1}>{absentCount}</Text>
+                  <Text size="xs" c="dimmed" fw={600}>Absent</Text>
+                </Stack>
+              </Group>
+            </ModernStatCard>
           </Grid.Col>
         </Grid>
 
-        {/* Recent Attendance */}
-        <Paper withBorder p="md" radius="md">
-          <Text size="lg" fw={600} mb="md">
-            Recent Attendance (Last 7 Days)
-          </Text>
-          <Table striped highlightOnHover withTableBorder withColumnBorders>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>In Time</Table.Th>
-                <Table.Th>Out Time</Table.Th>
-                <Table.Th>Regular Hours</Table.Th>
-                <Table.Th>Overtime Hours</Table.Th>
-                <Table.Th>Total Hours</Table.Th>
-                <Table.Th>Status</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {recentLogs.length > 0 ? (
-                recentLogs.map((log, idx) => {
-                  const dateInfo = formatDateWithDay(log.date)
-                  const uniqueKey = `${log.date}-${idx}`
-                  const isExpanded = expandedRows.has(uniqueKey)
-                  
-                  return (
-                    <Fragment key={uniqueKey}>
-                      <Table.Tr
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => toggleRow(uniqueKey)}
-                      >
-                        <Table.Td>
-                          <Group gap="xs">
-                            <ActionIcon
-                              variant="subtle"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleRow(uniqueKey)
-                              }}
-                            >
-                              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-                            </ActionIcon>
-                            <div>
-                              <Text fw={500} size="sm">
-                                {dateInfo.dayName}
-                              </Text>
-                              <Text size="xs" c="dimmed">
-                                {dateInfo.dateStr}
-                              </Text>
-                            </div>
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={500}>
-                            {log.inTime ? formatUTC12HourTime(log.inTime) : '-'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={500}>
-                            {log.outTime ? formatUTC12HourTime(log.outTime) : '-'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>{formatHoursMinutes(log.regularHours ?? 0)}</Table.Td>
-                        <Table.Td>{formatHoursMinutes(log.overtimeHours ?? 0)}</Table.Td>
-                        <Table.Td>{formatHoursMinutes((log.regularHours ?? 0) + (log.overtimeHours ?? 0))}</Table.Td>
-                        <Table.Td>
-                          <StatusBadge status={log.status} />
-                        </Table.Td>
-                      </Table.Tr>
-                      {isExpanded && (
-                        <Table.Tr key={`${uniqueKey}-expanded`}>
-                          <Table.Td colSpan={7} style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                            <Paper p="md" withBorder>
-                              <Stack gap="xs">
-                                <Group justify="space-between">
-                                  <Text size="sm" fw={600}>Full Details</Text>
-                                  <StatusBadge status={log.status} />
-                                </Group>
-                                <Divider />
-                                <Grid>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">Date</Text>
-                                    <Text fw={500}>{dateInfo.dayName}, {dateInfo.dateStr}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">Status</Text>
-                                    <Text fw={500}>{log.status || 'Unknown'}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">In Time</Text>
-                                    <Text fw={500}>{log.inTime ? formatUTC12Hour(log.inTime) : '-'}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">Out Time</Text>
-                                    <Text fw={500}>{log.outTime ? formatUTC12Hour(log.outTime) : '-'}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">Regular Hours</Text>
-                                    <Text fw={500}>{formatHoursMinutes(log.regularHours ?? 0)}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={6}>
-                                    <Text size="xs" c="dimmed">Overtime Hours</Text>
-                                    <Text fw={500}>{formatHoursMinutes(log.overtimeHours ?? 0)}</Text>
-                                  </Grid.Col>
-                                  <Grid.Col span={12}>
-                                    <Text size="xs" c="dimmed">Total Duration</Text>
-                                    <Text fw={500}>{formatHoursMinutes(log.durationHours ?? 0)}</Text>
-                                  </Grid.Col>
-                                </Grid>
-                              </Stack>
-                            </Paper>
+        {/* Dark Stats Bar */}
+        <DarkStatsGroup data={darkStatsData} />
+
+        {/* Main Content Area */}
+        <Grid gutter="xl">
+          <Grid.Col span={12}>
+            <Group justify="space-between" mb="md" align="center">
+              <Title order={3}>Recent Attendance</Title>
+              <TextInput
+                placeholder="Search logs..."
+                leftSection={<IconSearch size={16} />}
+                style={{ width: 300 }}
+                radius="md"
+              />
+            </Group>
+            <UniversalTable>
+              <UniversalTable.Thead>
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>In Time</Table.Th>
+                  <Table.Th>Out Time</Table.Th>
+                  <Table.Th>Regular Hours</Table.Th>
+                  <Table.Th>Overtime Hours</Table.Th>
+                  <Table.Th>Total Hours</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </UniversalTable.Thead>
+              <UniversalTable.Tbody>
+                {recentLogs.length > 0 ? (
+                  recentLogs.map((log, idx) => {
+                    const dateInfo = formatDateWithDay(log.date)
+                    const uniqueKey = `${log.date}-${idx}`
+                    const isExpanded = expandedRows.has(uniqueKey)
+
+                    return (
+                      <Fragment key={uniqueKey}>
+                        <Table.Tr
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => toggleRow(uniqueKey)}
+                        >
+                          <Table.Td>
+                            <Group gap="xs">
+                              <ActionIcon
+                                variant="subtle"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleRow(uniqueKey)
+                                }}
+                              >
+                                {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                              </ActionIcon>
+                              <div>
+                                <Text fw={500} size="sm">
+                                  {dateInfo.dayName}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                  {formatDateFriendly(log.date)}
+                                </Text>
+                              </div>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={500}>
+                              {log.inTime ? formatUTC12HourTime(log.inTime) : '-'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={500}>
+                              {log.outTime ? formatUTC12HourTime(log.outTime) : '-'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>{formatHoursMinutes(log.regularHours ?? 0)}</Table.Td>
+                          <Table.Td>{formatHoursMinutes(log.overtimeHours ?? 0)}</Table.Td>
+                          <Table.Td>{formatHoursMinutes((log.regularHours ?? 0) + (log.overtimeHours ?? 0))}</Table.Td>
+                          <Table.Td>
+                            <StatusBadge status={log.status} />
                           </Table.Td>
                         </Table.Tr>
-                      )}
-                    </Fragment>
-                  )
-                })
-              ) : (
-                <Table.Tr>
-                  <Table.Td colSpan={7}>
-                    <Text c="dimmed" ta="center">
-                      No recent attendance data
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Paper>
+                        {isExpanded && (
+                          <Table.Tr key={`${uniqueKey}-expanded`}>
+                            <Table.Td colSpan={7} style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                              <Paper p="md" withBorder>
+                                <Stack gap="xs">
+                                  <Group justify="space-between">
+                                    <Text size="sm" fw={600}>Full Details</Text>
+                                    <StatusBadge status={log.status} />
+                                  </Group>
+                                  <Divider />
+                                  <Grid>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">Date</Text>
+                                      <Text fw={500}>{dateInfo.dayName}, {formatDateFriendly(log.date)}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">Status</Text>
+                                      <Text fw={500}>{log.status || 'Unknown'}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">In Time</Text>
+                                      <Text fw={500}>{log.inTime ? formatUTC12Hour(log.inTime) : '-'}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">Out Time</Text>
+                                      <Text fw={500}>{log.outTime ? formatUTC12Hour(log.outTime) : '-'}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">Regular Hours</Text>
+                                      <Text fw={500}>{formatHoursMinutes(log.regularHours ?? 0)}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={6}>
+                                      <Text size="xs" c="dimmed">Overtime Hours</Text>
+                                      <Text fw={500}>{formatHoursMinutes(log.overtimeHours ?? 0)}</Text>
+                                    </Grid.Col>
+                                    <Grid.Col span={12}>
+                                      <Text size="xs" c="dimmed">Total Duration</Text>
+                                      <Text fw={500}>{formatHoursMinutes(log.durationHours ?? 0)}</Text>
+                                    </Grid.Col>
+                                  </Grid>
+                                </Stack>
+                              </Paper>
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                      </Fragment>
+                    )
+                  })
+                ) : (
+                  <Table.Tr>
+                    <Table.Td colSpan={7}>
+                      <Text c="dimmed" ta="center">
+                        No recent attendance data
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </UniversalTable.Tbody>
+            </UniversalTable>
+          </Grid.Col>
+        </Grid>
       </Stack>
     </Container>
   )
 }
-

@@ -20,7 +20,8 @@ import {
   ActionIcon,
   Box,
   Tabs,
-  TextInput
+  TextInput,
+  Indicator
 } from '@mantine/core'
 import {
   IconRefresh,
@@ -44,6 +45,8 @@ import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppShellWrapper } from '@/components/AppShellWrapper'
 import { MetricCard } from '@/components/shared/MetricCard'
+import { UniversalTabs } from '@/components/shared/UniversalTabs'
+import { UniversalTable } from '@/components/shared/UniversalTable'
 
 function Dashboard() {
   // State for logs table
@@ -84,6 +87,8 @@ function Dashboard() {
   const [onTimeModalOpen, setOnTimeModalOpen] = useState(false)
   const [presentModalOpen, setPresentModalOpen] = useState(false)
   const [punchOutMissingModalOpen, setPunchOutMissingModalOpen] = useState(false)
+  const [alertsModalOpen, setAlertsModalOpen] = useState(false)
+  const [pendingLeaves, setPendingLeaves] = useState([])
 
   // State for department collapse
   const [expandedDepartments, setExpandedDepartments] = useState({})
@@ -551,6 +556,16 @@ function Dashboard() {
     }
   }, [selectedDate])
 
+  const fetchPendingLeaves = async () => {
+    try {
+      const res = await fetch('/api/hr/leave-requests?status=pending')
+      const data = await res.json()
+      setPendingLeaves(data.data || [])
+    } catch (error) {
+      console.error('Failed to fetch pending leaves:', error)
+    }
+  }
+
   // Auto-sync: Initial sync after 2 seconds, then every 5 minutes
   useEffect(() => {
     const initialTimer = setTimeout(() => {
@@ -580,6 +595,7 @@ function Dashboard() {
   useEffect(() => {
     fetchLogs()
     fetchMetrics()
+    fetchPendingLeaves()
   }, [fetchMetrics])
 
   // Fetch all logs when search query is entered
@@ -848,10 +864,12 @@ function Dashboard() {
                   </Button>
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={() => setPunchOutMissingModalOpen(true)}>
-                    <IconAlertCircle size={24} />
-                    Review Alerts
-                  </Button>
+                  <Indicator label={pendingLeaves.length} color="red" size={20} disabled={pendingLeaves.length === 0} offset={7} withBorder processing>
+                    <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={() => setAlertsModalOpen(true)}>
+                      <IconAlertCircle size={24} />
+                      Review Alerts
+                    </Button>
+                  </Indicator>
                 </Grid.Col>
               </Grid>
             </Card>
@@ -919,13 +937,13 @@ function Dashboard() {
         </Paper>
 
         {/* Tabs for Status by Department and Attendance Logs */}
-        <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
-            <Tabs.Tab value="status">Employee Status by Department</Tabs.Tab>
-            <Tabs.Tab value="logs">Recent Attendance Logs</Tabs.Tab>
-          </Tabs.List>
+        <UniversalTabs value={activeTab} onChange={setActiveTab}>
+          <UniversalTabs.List>
+            <UniversalTabs.Tab value="status">Employee Status by Department</UniversalTabs.Tab>
+            <UniversalTabs.Tab value="logs">Recent Attendance Logs</UniversalTabs.Tab>
+          </UniversalTabs.List>
 
-          <Tabs.Panel value="status" pt="md">
+          <UniversalTabs.Panel value="status" pt="md">
             <Paper withBorder p="md" radius="lg">
               <Stack gap="md">
                 <div>
@@ -965,26 +983,22 @@ function Dashboard() {
 
                         <Collapse in={expandedDepartments[dept.department]}>
                           <div style={{ marginTop: '1rem' }}>
-                            <Table
-                              striped
-                              highlightOnHover
-                              style={{ tableLayout: 'fixed', width: '100%' }}
-                            >
+                            <UniversalTable style={{ tableLayout: 'fixed', width: '100%' }}>
                               <colgroup>
                                 <col style={{ width: '25%' }} />
                                 <col style={{ width: '25%' }} />
                                 <col style={{ width: '20%' }} />
                                 <col style={{ width: '30%' }} />
                               </colgroup>
-                              <Table.Thead>
+                              <UniversalTable.Thead>
                                 <Table.Tr>
                                   <Table.Th>Name</Table.Th>
                                   <Table.Th>Schedule</Table.Th>
                                   <Table.Th>Status</Table.Th>
                                   <Table.Th>Login Time</Table.Th>
                                 </Table.Tr>
-                              </Table.Thead>
-                              <Table.Tbody>
+                              </UniversalTable.Thead>
+                              <UniversalTable.Tbody>
                                 {dept.employees.map((emp) => {
                                   let badgeColor = 'gray'
                                   if (emp.status === 'On-Time') badgeColor = 'green'
@@ -1019,8 +1033,8 @@ function Dashboard() {
                                     </Table.Tr>
                                   )
                                 })}
-                              </Table.Tbody>
-                            </Table>
+                              </UniversalTable.Tbody>
+                            </UniversalTable>
                           </div>
                         </Collapse>
                       </Card>
@@ -1029,7 +1043,7 @@ function Dashboard() {
                 )}
               </Stack>
             </Paper>
-          </Tabs.Panel>
+          </UniversalTabs.Panel>
 
           {/* Modals for Late, Absent, and On-Time Employees */}
           <Modal
@@ -1293,7 +1307,7 @@ function Dashboard() {
             )}
           </Modal>
 
-          <Tabs.Panel value="logs" pt="md">
+          <UniversalTabs.Panel value="logs" pt="md">
             <Paper withBorder radius="lg" p="md">
               <Stack gap="md">
                 <div>
@@ -1313,8 +1327,8 @@ function Dashboard() {
                 </div>
 
                 <LoadingOverlay visible={loading} />
-                <Table striped highlightOnHover>
-                  <Table.Thead>
+                <UniversalTable>
+                  <UniversalTable.Thead>
                     <Table.Tr>
                       <Table.Th>ZK User ID</Table.Th>
                       <Table.Th>Employee</Table.Th>
@@ -1323,8 +1337,8 @@ function Dashboard() {
                       <Table.Th>Punch Status</Table.Th>
                       <Table.Th>Synced At</Table.Th>
                     </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
+                  </UniversalTable.Thead>
+                  <UniversalTable.Tbody>
                     {rows.length === 0 ? (
                       <Table.Tr>
                         <Table.Td colSpan={6}>
@@ -1336,8 +1350,8 @@ function Dashboard() {
                     ) : (
                       rows
                     )}
-                  </Table.Tbody>
-                </Table>
+                  </UniversalTable.Tbody>
+                </UniversalTable>
 
                 {/* Pagination */}
                 <Group justify="center" mt="xl">
@@ -1355,8 +1369,8 @@ function Dashboard() {
                 </Group>
               </Stack>
             </Paper>
-          </Tabs.Panel>
-        </Tabs>
+          </UniversalTabs.Panel>
+        </UniversalTabs>
 
         {/* Punch Out Missing Modal */}
         <Modal
@@ -1414,6 +1428,63 @@ function Dashboard() {
               </Table.Tbody>
             </Table>
           )}
+        </Modal>
+
+        {/* Alerts Modal */}
+        <Modal
+          opened={alertsModalOpen}
+          onClose={() => setAlertsModalOpen(false)}
+          title={<Text fw={600} size="lg">Pending Alerts</Text>}
+          size="lg"
+          styles={{
+            body: { padding: 'var(--mantine-spacing-lg)' },
+          }}
+        >
+          <Stack>
+            {pendingLeaves.length > 0 ? (
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Text size="sm" fw={500}>Pending Leave Requests</Text>
+                  <Badge color="red" size="sm" circle>{pendingLeaves.length}</Badge>
+                </Group>
+                {pendingLeaves.map(request => (
+                  <Paper
+                    key={request.id}
+                    withBorder
+                    p="md"
+                    radius="md"
+                    component={Link}
+                    href="/leave-management?tab=requests"
+                    onClick={() => setAlertsModalOpen(false)}
+                    style={{ cursor: 'pointer', textDecoration: 'none', color: 'inherit', transition: 'all 0.2s' }}
+                    className="hover-paper"
+                  >
+                    <Group justify="space-between" align="flex-start">
+                      <Group gap="sm">
+                        <div>
+                          <Text fw={600} size="sm">{request.employee?.first_name} {request.employee?.last_name}</Text>
+                          <Text size="xs" c="dimmed">{request.employee?.department?.name}</Text>
+                        </div>
+                      </Group>
+                      <Badge color="yellow" variant="light">Pending</Badge>
+                    </Group>
+                    <Group mt="xs" gap="xs">
+                      <Badge variant="dot" color="blue" size="sm">{request.leave_types?.name}</Badge>
+                      <Text size="xs" c="dimmed">•</Text>
+                      <Text size="xs" fw={500}>{request.total_days} Day{request.total_days !== 1 ? 's' : ''}</Text>
+                      <Text size="xs" c="dimmed">•</Text>
+                      <Text size="xs">{request.start_date} to {request.end_date}</Text>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Stack align="center" py="xl">
+                <IconAlertCircle size={48} color="var(--mantine-color-gray-3)" />
+                <Text c="dimmed" ta="center">No pending alerts</Text>
+              </Stack>
+            )}
+          </Stack>
         </Modal>
       </Container>
     </Box>
