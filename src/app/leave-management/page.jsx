@@ -933,12 +933,3 @@ export default function LeaveManagementPage() {
     </Suspense>
   )
 }
-
-export default function LeaveManagementPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <LeaveManagementContent />
-    </Suspense>
-  )
-}
-
