@@ -17,7 +17,7 @@ export function AdminAccessBanner() {
       color="blue"
       title={
         <Group justify="space-between" style={{ width: '100%' }}>
-          <span>You're logged in as an Administrator</span>
+          <span>You&apos;re logged in as an Administrator</span>
           <Button
             component={Link}
             href="/"

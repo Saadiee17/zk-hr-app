@@ -107,7 +107,7 @@ export default function BridgeInstaller() {
             <div>
               <Text fw={600} mb="sm">When do you need this?</Text>
               <List spacing="xs" size="sm" c="dimmed">
-                <List.Item>✅ <strong>Most users don't need this</strong> - the full installer has everything pre-configured</List.Item>
+                <List.Item>✅ <strong>Most users don&apos;t need this</strong> - the full installer has everything pre-configured</List.Item>
                 <List.Item>Only download if you need to change settings after installation</List.Item>
                 <List.Item>For example: changing device IP, port, or sync interval</List.Item>
                 <List.Item>Or to test device connections and Supabase sync</List.Item>

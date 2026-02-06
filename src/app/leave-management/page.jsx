@@ -14,8 +14,9 @@ import { LeaveStatusBadge } from '@/components/shared/LeaveStatusBadge'
 import { LeaveRequestForm } from '@/components/shared/LeaveRequestForm'
 import { formatEmployeeName, toYMD } from '@/utils/attendanceUtils'
 import { formatDateFriendly } from '@/utils/dateFormatting'
+import { Suspense } from 'react'
 
-export default function LeaveManagementPage() {
+function LeaveManagementContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'types')
 
@@ -757,7 +758,7 @@ export default function LeaveManagementPage() {
             showEmployeeSelect={true}
           />
           <Text size="sm" c="dimmed">
-            Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period.
+            Note: When this leave is approved, schedule exceptions will be automatically created as &quot;Day Off&quot; for the leave period.
             You can customize exceptions (half days, custom times) via the HR Management page after approval.
           </Text>
         </Stack>
@@ -920,6 +921,14 @@ export default function LeaveManagementPage() {
         </form>
       </Modal>
     </Container >
+  )
+}
+
+export default function LeaveManagementPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LeaveManagementContent />
+    </Suspense>
   )
 }
 

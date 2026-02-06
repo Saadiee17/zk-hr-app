@@ -20,7 +20,7 @@ import { useAttendanceReport } from '@/hooks/useAttendanceReport'
 export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
   const [employee, setEmployee] = useState(null)
   const [loading, setLoading] = useState(true)
-  
+
   // Use shared hooks
   const { dateRange, setDateRange, dateFilter, setDateFilter } = useDateRange('this-month')
   const { reportRows, loading: reportLoading } = useAttendanceReport(employeeId, dateRange)
@@ -138,23 +138,23 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
 
   const profileItems = useMemo(() => {
     if (!employee) return []
-    
+
     let scheduleValue = 'N/A'
     if (employeeSchedule) {
       if (employeeSchedule.schedule_name) {
-        const scheduleType = employeeSchedule.schedule_type === 'individual' ? 'Individual Override' : 
-                           employeeSchedule.schedule_type === 'department' ? 'Department Default' : 
-                           'No Schedule'
+        const scheduleType = employeeSchedule.schedule_type === 'individual' ? 'Individual Override' :
+          employeeSchedule.schedule_type === 'department' ? 'Department Default' :
+            'No Schedule'
         scheduleValue = `${scheduleType}: ${employeeSchedule.schedule_name}`
       } else {
-        scheduleValue = employeeSchedule.schedule_type === 'individual' ? 'Individual Override (No Name)' : 
-                       employeeSchedule.schedule_type === 'department' ? 'Department Default (No Name)' : 
-                       'No Schedule'
+        scheduleValue = employeeSchedule.schedule_type === 'individual' ? 'Individual Override (No Name)' :
+          employeeSchedule.schedule_type === 'department' ? 'Department Default (No Name)' :
+            'No Schedule'
       }
     } else if (employee.primary_schedule && employee.primary_schedule !== 'Not Assigned') {
       scheduleValue = employee.primary_schedule
     }
-    
+
     return [
       { label: 'Name', value: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() },
       { label: 'Department', value: employee?.department?.name || 'N/A' },
@@ -184,14 +184,14 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
         reason: leaveRequestForm.reason || '',
         status: 'approved',
       }
-      
+
       const res = await fetch('/api/hr/leave-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         const errorMsg = json.error || 'Failed to create leave request'
         const details = json.details ? ` (${json.details})` : ''
@@ -220,7 +220,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
     if (!isAdminView || !employee?.id || !currentException?.date) return
     try {
       setExceptionSaving(true)
-      
+
       const payload = {
         employee_id: employee.id,
         date: String(currentException.date || ''),
@@ -229,7 +229,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
         is_day_off: Boolean(currentException.is_day_off || false),
         is_half_day: Boolean(currentException.is_half_day || false),
       }
-      
+
       const res = await fetch('/api/hr/schedule-exceptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,7 +245,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       setExceptionSaving(false)
     }
   }
-  
+
   const handleDeleteException = async () => {
     if (!isAdminView || !employee?.id || !currentException?.date) return
     try {
@@ -259,7 +259,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
         }),
       })
       if (!res.ok) {
-        const json = await res.json().catch(()=>({}))
+        const json = await res.json().catch(() => ({}))
         throw new Error(json.error || 'Failed to delete exception')
       }
       showSuccess('Exception cleared.')
@@ -279,9 +279,9 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
       <Group justify="space-between" mb="md">
         <Title order={1}>{isAdminView ? 'Employee Profile' : 'My Attendance Report'}</Title>
         {isAdminView && employee && (
-          <ActionIcon 
-            variant="light" 
-            color="blue" 
+          <ActionIcon
+            variant="light"
+            color="blue"
             size="lg"
             aria-label="Edit Employee"
             onClick={() => {
@@ -328,14 +328,14 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                       default: return null
                     }
                   }
-                  
+
                   const isHighlighted = it.label === 'Name' || it.label === 'Status'
                   const isStatus = it.label === 'Status'
-                  
+
                   return (
                     <Grid.Col key={it.label} span={{ base: 12, sm: 6, md: 4 }}>
                       <Group gap="xs" align="flex-start">
-                        <div style={{ 
+                        <div style={{
                           color: 'var(--mantine-color-gray-6)',
                           marginTop: '2px'
                         }}>
@@ -346,16 +346,16 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                             {it.label}
                           </Text>
                           {isStatus ? (
-                            <Badge 
-                              color={it.value === 'Enabled' ? 'green' : 'red'} 
+                            <Badge
+                              color={it.value === 'Enabled' ? 'green' : 'red'}
                               variant="light"
                               size="sm"
                             >
                               {it.value}
                             </Badge>
                           ) : (
-                            <Text 
-                              fw={isHighlighted ? 700 : 600} 
+                            <Text
+                              fw={isHighlighted ? 700 : 600}
                               size={isHighlighted ? "md" : "sm"}
                               c={it.value === 'N/A' ? 'dimmed' : undefined}
                               style={{ wordBreak: 'break-word' }}
@@ -374,15 +374,15 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
             <Stack gap="md">
               <div>
                 <Text size="sm" fw={500} mb="xs">Quick Filters</Text>
-                <DateRangeFilter 
-                  value={dateRange} 
+                <DateRangeFilter
+                  value={dateRange}
                   onChange={setDateRange}
                   defaultFilter={dateFilter}
                   dateFilter={dateFilter}
                   onFilterChange={setDateFilter}
                 />
               </div>
-              
+
               <Select
                 label="Filter by Status"
                 placeholder="All Statuses"
@@ -400,7 +400,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
             )}
 
             {/* Attendance Table */}
-            <AttendanceTable 
+            <AttendanceTable
               data={reportRows}
               loading={reportLoading}
               filteredData={filteredRows}
@@ -483,12 +483,12 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                   placeholder="Optional (device password)"
                   {...editForm.getInputProps('password')}
                 />
-                
+
                 <Divider my="sm" label="Schedule Management" />
 
-                <Button 
-                  leftSection={<IconCalendar size={14} />} 
-                  variant="outline" 
+                <Button
+                  leftSection={<IconCalendar size={14} />}
+                  variant="outline"
                   onClick={() => {
                     const today = new Date()
                     setSelectedDate(today)
@@ -507,7 +507,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
 
                 <Title order={5}>Individual Weekly Schedule Override (Optional)</Title>
                 <Text c="dimmed" size="xs" mt={-10} mb={10}>
-                  Use this if the employee permanently follows a different weekly schedule than their department's default.
+                  Use this if the employee permanently follows a different weekly schedule than their department&apos;s default.
                 </Text>
                 <Select
                   label="Time Zone 1"
@@ -559,20 +559,20 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                       const ymd = toYMD(dateObj)
                       const exception = exceptions.find(ex => ex.date === ymd)
                       const isSelected = ymd === toYMD(selectedDate)
-                      
+
                       let backgroundColor = undefined
                       if (isSelected) {
-                        backgroundColor = exception 
+                        backgroundColor = exception
                           ? (exception.is_day_off ? 'rgba(255, 0, 0, 0.2)' : exception.is_half_day ? 'rgba(255, 165, 0, 0.2)' : 'rgba(0, 0, 255, 0.2)')
                           : 'rgba(34, 139, 34, 0.2)'
                       } else if (exception) {
-                        backgroundColor = exception.is_day_off 
-                          ? 'rgba(255, 0, 0, 0.1)' 
+                        backgroundColor = exception.is_day_off
+                          ? 'rgba(255, 0, 0, 0.1)'
                           : exception.is_half_day
-                          ? 'rgba(255, 165, 0, 0.1)'
-                          : 'rgba(0, 0, 255, 0.1)'
+                            ? 'rgba(255, 165, 0, 0.1)'
+                            : 'rgba(0, 0, 255, 0.1)'
                       }
-                      
+
                       return {
                         onClick: (e) => {
                           e.stopPropagation()
@@ -598,7 +598,7 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                 {currentException ? (
                   <Stack>
                     <Title order={5}>{selectedDate.toLocaleDateString()}</Title>
-                    
+
                     {employeeSchedule && (
                       <>
                         <Divider label="Current Schedule" />
@@ -630,10 +630,10 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                         </Paper>
                       </>
                     )}
-                    
+
                     <Divider label="Leave Request (Optional)" />
                     <Text size="xs" c="dimmed">Link this exception to a formal leave request or create a new one.</Text>
-                    
+
                     {!showLeaveRequestForm ? (
                       <Stack gap="xs">
                         <Select
@@ -642,8 +642,8 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                           data={leaveRequests
                             .filter(lr => lr.status === 'approved' || lr.status === 'pending')
                             .map(lr => {
-                              const leaveType = Array.isArray(lr.leave_types) 
-                                ? lr.leave_types[0] 
+                              const leaveType = Array.isArray(lr.leave_types)
+                                ? lr.leave_types[0]
                                 : lr.leave_types
                               const leaveTypeName = leaveType?.name || leaveType?.code || 'Unknown'
                               return {
@@ -691,9 +691,9 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
                         </Group>
                       </Stack>
                     )}
-                    
+
                     <Divider label="Schedule Override" />
-                    
+
                     <Switch
                       label="Day Off"
                       checked={currentException.is_day_off || false}
