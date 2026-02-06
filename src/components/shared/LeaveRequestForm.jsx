@@ -33,15 +33,19 @@ export function LeaveRequestForm({
   const [reason, setReason] = useState(initialValues?.reason || '')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(initialValues?.employee_id || employeeId || null)
 
-  useEffect(() => {
-    if (initialValues) {
-      setSelectedLeaveType(initialValues.leave_type_id || null)
-      setStartDate(initialValues.start_date ? new Date(initialValues.start_date) : null)
-      setEndDate(initialValues.end_date ? new Date(initialValues.end_date) : null)
-      setReason(initialValues.reason || '')
-      setSelectedEmployeeId(initialValues.employee_id || employeeId || null)
-    }
-  }, [initialValues, employeeId])
+  const [prevInitialValues, setPrevInitialValues] = useState(initialValues)
+  const [prevEmployeeId, setPrevEmployeeId] = useState(employeeId)
+
+  if (initialValues !== prevInitialValues || employeeId !== prevEmployeeId) {
+    setPrevInitialValues(initialValues)
+    setPrevEmployeeId(employeeId)
+    setSelectedLeaveType(initialValues?.leave_type_id || null)
+    setStartDate(initialValues?.start_date ? new Date(initialValues.start_date) : null)
+    setEndDate(initialValues?.end_date ? new Date(initialValues.end_date) : null)
+    setReason(initialValues?.reason || '')
+    setSelectedEmployeeId(initialValues?.employee_id || employeeId || null)
+  }
+
 
   const leaveTypeOptions = leaveTypes
     .filter(t => t.is_active !== false)

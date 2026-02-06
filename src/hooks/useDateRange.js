@@ -27,6 +27,7 @@ export function useDateRange(defaultFilter = 'this-month') {
     }
   }
 
+
   const handleCustomRangeChange = (range) => {
     setDateRange(range)
     if (range && range[0] && range[1]) {
@@ -51,7 +52,7 @@ export function useDateRange(defaultFilter = 'this-month') {
 
 function getDateRangeForFilter(filter) {
   const now = new Date()
-  
+
   switch (filter) {
     case 'today': {
       const today = new Date()

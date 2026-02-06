@@ -101,11 +101,11 @@ export default function EmployeeManagementPage() {
   }
 
   const safeLower = (v) => (typeof v === 'string' ? v.toLowerCase() : '')
-  
+
   // Filter employees based on search query
   const filteredEmployees = useMemo(() => {
     if (!searchQuery.trim()) return employees
-    
+
     const query = safeLower(searchQuery)
     return employees.filter((emp) => {
       const fullName = safeLower(`${emp.first_name || ''} ${emp.last_name || ''}`.trim())
@@ -115,7 +115,7 @@ export default function EmployeeManagementPage() {
       const schedule = safeLower(emp?.primary_schedule || '')
       const privilege = String(emp?.privilege ?? '')
       const status = emp?.is_active ? 'enabled' : 'disabled'
-      
+
       return (
         fullName.includes(query) ||
         employeeId.includes(query) ||
@@ -127,38 +127,38 @@ export default function EmployeeManagementPage() {
       )
     })
   }, [employees, searchQuery])
-  
+
   const empSorted = useMemo(() => {
     return [...filteredEmployees].sort((a, b) => {
-    const dir = empSort.dir === 'asc' ? 1 : -1
-    const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim()
-    const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim()
-    const depA = a?.department?.name || ''
-    const depB = b?.department?.name || ''
-    const schedA = a?.primary_schedule || ''
-    const schedB = b?.primary_schedule || ''
-    const privA = Number(a?.privilege ?? 0)
-    const privB = Number(b?.privilege ?? 0)
-    const zkA = Number(a?.zk_user_id ?? -Infinity)
-    const zkB = Number(b?.zk_user_id ?? -Infinity)
-    const statA = a?.is_active ? 'Enabled' : 'Disabled'
-    const statB = b?.is_active ? 'Enabled' : 'Disabled'
-    switch (empSort.key) {
-      case 'name':
-        return dir * (safeLower(nameA) > safeLower(nameB) ? 1 : safeLower(nameA) < safeLower(nameB) ? -1 : 0)
-      case 'zk':
-        return dir * (zkA - zkB)
-      case 'primary':
-        return dir * (safeLower(schedA) > safeLower(schedB) ? 1 : safeLower(schedA) < safeLower(schedB) ? -1 : 0)
-      case 'department':
-        return dir * (safeLower(depA) > safeLower(depB) ? 1 : safeLower(depA) < safeLower(depB) ? -1 : 0)
-      case 'privilege':
-        return dir * (privA - privB)
-      case 'status':
-        return dir * (safeLower(statA) > safeLower(statB) ? 1 : safeLower(statA) < safeLower(statB) ? -1 : 0)
-      default:
-        return 0
-    }
+      const dir = empSort.dir === 'asc' ? 1 : -1
+      const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim()
+      const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim()
+      const depA = a?.department?.name || ''
+      const depB = b?.department?.name || ''
+      const schedA = a?.primary_schedule || ''
+      const schedB = b?.primary_schedule || ''
+      const privA = Number(a?.privilege ?? 0)
+      const privB = Number(b?.privilege ?? 0)
+      const zkA = Number(a?.zk_user_id ?? -Infinity)
+      const zkB = Number(b?.zk_user_id ?? -Infinity)
+      const statA = a?.is_active ? 'Enabled' : 'Disabled'
+      const statB = b?.is_active ? 'Enabled' : 'Disabled'
+      switch (empSort.key) {
+        case 'name':
+          return dir * (safeLower(nameA) > safeLower(nameB) ? 1 : safeLower(nameA) < safeLower(nameB) ? -1 : 0)
+        case 'zk':
+          return dir * (zkA - zkB)
+        case 'primary':
+          return dir * (safeLower(schedA) > safeLower(schedB) ? 1 : safeLower(schedA) < safeLower(schedB) ? -1 : 0)
+        case 'department':
+          return dir * (safeLower(depA) > safeLower(depB) ? 1 : safeLower(depA) < safeLower(depB) ? -1 : 0)
+        case 'privilege':
+          return dir * (privA - privB)
+        case 'status':
+          return dir * (safeLower(statA) > safeLower(statB) ? 1 : safeLower(statA) < safeLower(statB) ? -1 : 0)
+        default:
+          return 0
+      }
     })
   }, [filteredEmployees, empSort])
 
@@ -177,16 +177,16 @@ export default function EmployeeManagementPage() {
 
   const handleResetPassword = async () => {
     if (!resetPasswordEmployee) return
-    
+
     try {
       const res = await fetch('/api/auth/admin-reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId: resetPasswordEmployee.id }),
       })
-      
+
       const data = await res.json()
-      
+
       if (res.ok) {
         showSuccess('Password reset successfully. Employee will be prompted to set a new password on next login.')
         setResetPasswordModal(false)
@@ -236,14 +236,14 @@ export default function EmployeeManagementPage() {
         reason: leaveRequestForm.reason || '',
         status: 'approved',
       }
-      
+
       const res = await fetch('/api/hr/leave-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         const errorMsg = json.error || 'Failed to create leave request'
         const details = json.details ? ` (${json.details})` : ''
@@ -271,7 +271,7 @@ export default function EmployeeManagementPage() {
     if (!assignEmp?.id || !currentException?.date) return
     try {
       setExceptionSaving(true)
-      
+
       const payload = {
         employee_id: assignEmp.id,
         date: String(currentException.date || ''),
@@ -280,7 +280,7 @@ export default function EmployeeManagementPage() {
         is_day_off: Boolean(currentException.is_day_off || false),
         is_half_day: Boolean(currentException.is_half_day || false),
       }
-      
+
       const res = await fetch('/api/hr/schedule-exceptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -296,7 +296,7 @@ export default function EmployeeManagementPage() {
       setExceptionSaving(false)
     }
   }
-  
+
   const handleDeleteException = async () => {
     if (!assignEmp?.id || !currentException?.date) return
     try {
@@ -310,7 +310,7 @@ export default function EmployeeManagementPage() {
         }),
       })
       if (!res.ok) {
-        const json = await res.json().catch(()=>({}))
+        const json = await res.json().catch(() => ({}))
         throw new Error(json.error || 'Failed to delete exception')
       }
       showSuccess('Exception cleared.')
@@ -338,24 +338,24 @@ export default function EmployeeManagementPage() {
       <Table.Td>{e?.is_active ? 'Enabled' : 'Disabled'}</Table.Td>
       <Table.Td>
         <Group gap="xs">
-        <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
-          setAssignEmp(e)
-          editForm.setValues({
-            full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
-            department_id: e.department_id || null,
-            privilege: e.privilege ?? 0,
-            is_active: Boolean(e.is_active),
-            card_number: e.card_number || '',
-            individual_tz_1: e.individual_tz_1 ?? null,
-            individual_tz_2: e.individual_tz_2 ?? null,
-            individual_tz_3: e.individual_tz_3 ?? null,
-          })
-          fetchExceptions(e.id)
-          fetchLeaveRequests(e.id)
-          setAssignOpen(true)
-        }}>
-          <IconEdit size={18} />
-        </ActionIcon>
+          <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
+            setAssignEmp(e)
+            editForm.setValues({
+              full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+              department_id: e.department_id || null,
+              privilege: e.privilege ?? 0,
+              is_active: Boolean(e.is_active),
+              card_number: e.card_number || '',
+              individual_tz_1: e.individual_tz_1 ?? null,
+              individual_tz_2: e.individual_tz_2 ?? null,
+              individual_tz_3: e.individual_tz_3 ?? null,
+            })
+            fetchExceptions(e.id)
+            fetchLeaveRequests(e.id)
+            setAssignOpen(true)
+          }}>
+            <IconEdit size={18} />
+          </ActionIcon>
           <ActionIcon variant="light" color="orange" aria-label="Reset Password" onClick={() => {
             setResetPasswordEmployee(e)
             setResetPasswordModal(true)
@@ -380,13 +380,13 @@ export default function EmployeeManagementPage() {
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
             style={{ maxWidth: 600 }}
           />
-          
+
           {searchQuery && (
             <Text size="sm" c="dimmed">
               Showing {empSorted.length} of {employees.length} employees
             </Text>
           )}
-          
+
           <Paper withBorder>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
@@ -527,12 +527,12 @@ export default function EmployeeManagementPage() {
                 placeholder="Optional (device password)"
                 {...editForm.getInputProps('password')}
               />
-              
+
               <Divider my="sm" label="Schedule Management" />
 
-              <Button 
-                leftSection={<IconCalendar size={14} />} 
-                variant="outline" 
+              <Button
+                leftSection={<IconCalendar size={14} />}
+                variant="outline"
                 onClick={() => {
                   const today = new Date()
                   setSelectedDate(today)
@@ -551,7 +551,7 @@ export default function EmployeeManagementPage() {
 
               <Title order={5}>Individual Weekly Schedule Override (Optional)</Title>
               <Text c="dimmed" size="xs" mt={-10} mb={10}>
-                Use this if the employee permanently follows a different weekly schedule than their department's default.
+                Use this if the employee permanently follows a different weekly schedule than their department&apos;s default.
               </Text>
               <Select
                 label="Time Zone 1"
@@ -603,20 +603,20 @@ export default function EmployeeManagementPage() {
                     const ymd = toYMD(dateObj)
                     const exception = exceptions.find(ex => ex.date === ymd)
                     const isSelected = ymd === toYMD(selectedDate)
-                    
+
                     let backgroundColor = undefined
                     if (isSelected) {
-                      backgroundColor = exception 
+                      backgroundColor = exception
                         ? (exception.is_day_off ? 'rgba(255, 0, 0, 0.2)' : exception.is_half_day ? 'rgba(255, 165, 0, 0.2)' : 'rgba(0, 0, 255, 0.2)')
                         : 'rgba(34, 139, 34, 0.2)'
                     } else if (exception) {
-                      backgroundColor = exception.is_day_off 
-                        ? 'rgba(255, 0, 0, 0.1)' 
+                      backgroundColor = exception.is_day_off
+                        ? 'rgba(255, 0, 0, 0.1)'
                         : exception.is_half_day
-                        ? 'rgba(255, 165, 0, 0.1)'
-                        : 'rgba(0, 0, 255, 0.1)'
+                          ? 'rgba(255, 165, 0, 0.1)'
+                          : 'rgba(0, 0, 255, 0.1)'
                     }
-                    
+
                     return {
                       onClick: (e) => {
                         e.stopPropagation()
@@ -642,7 +642,7 @@ export default function EmployeeManagementPage() {
               {currentException ? (
                 <Stack>
                   <Title order={5}>{selectedDate.toLocaleDateString()}</Title>
-                  
+
                   {employeeSchedule && (
                     <>
                       <Divider label="Current Schedule" />
@@ -674,10 +674,10 @@ export default function EmployeeManagementPage() {
                       </Paper>
                     </>
                   )}
-                  
+
                   <Divider label="Leave Request (Optional)" />
                   <Text size="xs" c="dimmed">Link this exception to a formal leave request or create a new one.</Text>
-                  
+
                   {!showLeaveRequestForm ? (
                     <Stack gap="xs">
                       <Select
@@ -686,8 +686,8 @@ export default function EmployeeManagementPage() {
                         data={leaveRequests
                           .filter(lr => lr.status === 'approved' || lr.status === 'pending')
                           .map(lr => {
-                            const leaveType = Array.isArray(lr.leave_types) 
-                              ? lr.leave_types[0] 
+                            const leaveType = Array.isArray(lr.leave_types)
+                              ? lr.leave_types[0]
                               : lr.leave_types
                             const leaveTypeName = leaveType?.name || leaveType?.code || 'Unknown'
                             return {
@@ -735,9 +735,9 @@ export default function EmployeeManagementPage() {
                       </Group>
                     </Stack>
                   )}
-                  
+
                   <Divider label="Schedule Override" />
-                  
+
                   <Switch
                     label="Day Off"
                     checked={currentException.is_day_off || false}

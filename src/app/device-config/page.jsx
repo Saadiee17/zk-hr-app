@@ -52,7 +52,7 @@ export default function DeviceConfigPage() {
       const settings = json.data || {}
       const bufferTime = settings.buffer_time_minutes ? Number(settings.buffer_time_minutes) : 30
       setCompanyBufferTime(bufferTime)
-      
+
       // Working day settings
       setWorkingDayEnabled(settings.working_day_enabled === 'true' || settings.working_day_enabled === true)
       setWorkingDayStartTime(settings.working_day_start_time || '10:00')
@@ -86,18 +86,18 @@ export default function DeviceConfigPage() {
   // Parse tz_string to extract schedule details
   const parseSchedule = (tzString) => {
     if (!tzString || tzString.length !== 56) return null
-    
+
     const scheduleDays = []
     let commonStart = null
     let commonEnd = null
     let hasCommonSchedule = true
-    
+
     for (let weekday = 0; weekday < 7; weekday++) {
       const start = weekday * 8
       const seg = tzString.slice(start, start + 8)
       const startHHMM = seg.slice(0, 4)
       const endHHMM = seg.slice(4, 8)
-      
+
       if (startHHMM === '0000' && endHHMM === '2359') {
         scheduleDays.push(null) // Day off
       } else {
@@ -110,7 +110,7 @@ export default function DeviceConfigPage() {
         }
       }
     }
-    
+
     return {
       scheduleDays,
       commonStart,
@@ -123,7 +123,7 @@ export default function DeviceConfigPage() {
   const formatScheduleDisplay = (tz) => {
     const parsed = parseSchedule(tz.tz_string)
     if (!parsed) return 'Invalid schedule'
-    
+
     if (parsed.hasCommonSchedule && parsed.commonStart && parsed.commonEnd) {
       const startTime = formatHHMM(parsed.commonStart)
       const endTime = formatHHMM(parsed.commonEnd)
@@ -230,7 +230,7 @@ export default function DeviceConfigPage() {
         }),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         throw new Error(json.error || 'Failed to save schedule')
       }
@@ -254,7 +254,7 @@ export default function DeviceConfigPage() {
     setEditingSchedule(tz)
     setEditName(tz.name)
     setEditBufferTimeMinutes(tz.buffer_time_minutes != null ? tz.buffer_time_minutes : null)
-    
+
     const parsed = parseSchedule(tz.tz_string)
     if (parsed && parsed.hasCommonSchedule && parsed.commonStart && parsed.commonEnd) {
       setEditShiftStart(HHMMtoTime(parsed.commonStart))
@@ -273,7 +273,7 @@ export default function DeviceConfigPage() {
         setEditDaySelected(days.map(() => false))
       }
     }
-    
+
     // Also fetch assignments when opening edit modal
     setSelectedTzId(tz.id)
     setLoadingAssignments(true)
@@ -288,7 +288,7 @@ export default function DeviceConfigPage() {
     } finally {
       setLoadingAssignments(false)
     }
-    
+
     setEditModalOpen(true)
   }
 
@@ -331,7 +331,7 @@ export default function DeviceConfigPage() {
         }),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         throw new Error(json.error || 'Failed to update schedule')
       }
@@ -358,7 +358,7 @@ export default function DeviceConfigPage() {
         }),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         throw new Error(json.error || 'Failed to save company buffer time')
       }
@@ -383,13 +383,13 @@ export default function DeviceConfigPage() {
         }),
       })
       const json = await res.json()
-      
+
       if (!res.ok) {
         throw new Error(json.error || 'Failed to save working day settings')
       }
 
       showSuccess(
-        workingDayEnabled 
+        workingDayEnabled
           ? `Working day enabled: ${workingDayStartTime} to 9:59 AM next day`
           : 'Working day concept disabled - using calendar dates',
         'Working Day Settings Updated'
@@ -480,12 +480,12 @@ export default function DeviceConfigPage() {
         <Stack gap="md">
           <Title order={4}>Working Day Configuration</Title>
           <Text size="sm" c="dimmed">
-            Enable working day concept to simplify overnight shift calculations. When enabled, a working day spans from the start time to 9:59 AM the next calendar day. This helps determine if someone is "absent" vs "shift not started" more accurately.
+            Enable working day concept to simplify overnight shift calculations. When enabled, a working day spans from the start time to 9:59 AM the next calendar day. This helps determine if someone is &quot;absent&quot; vs &quot;shift not started&quot; more accurately.
           </Text>
           <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
             <strong>Note:</strong> You can disable this feature at any time to revert to the previous calendar date-based logic.
           </Text>
-          
+
           <Checkbox
             label="Enable Working Day Concept"
             description="When enabled, uses working day boundaries instead of calendar dates"
@@ -493,7 +493,7 @@ export default function DeviceConfigPage() {
             onChange={(e) => setWorkingDayEnabled(e.currentTarget.checked)}
             mb="md"
           />
-          
+
           {workingDayEnabled && (
             <Group wrap="wrap" gap="md" align="end">
               <TextInput
@@ -513,8 +513,8 @@ export default function DeviceConfigPage() {
                   <Text size="sm" fw={500}>9:59 AM (next calendar day)</Text>
                 </Paper>
               </div>
-              <Button 
-                onClick={handleSaveWorkingDaySettings} 
+              <Button
+                onClick={handleSaveWorkingDaySettings}
                 loading={savingWorkingDay}
                 disabled={!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(workingDayStartTime)}
               >
@@ -522,7 +522,7 @@ export default function DeviceConfigPage() {
               </Button>
             </Group>
           )}
-          
+
           {workingDayEnabled && (
             <Text size="xs" c="blue" mt="xs">
               Working day will span from <strong>{workingDayStartTime}</strong> to <strong>9:59 AM</strong> the next calendar day (24-hour period).

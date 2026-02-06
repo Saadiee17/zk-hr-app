@@ -9,9 +9,18 @@ import { DatePickerInput } from '@mantine/dates'
 import { LeaveStatusBadge } from '@/components/shared/LeaveStatusBadge'
 import { LeaveRequestForm } from '@/components/shared/LeaveRequestForm'
 import { formatEmployeeName, toYMD } from '@/utils/attendanceUtils'
+import { formatDateFriendly } from '@/utils/dateFormatting'
+import { Suspense } from 'react'
 
-export default function LeaveManagementPage() {
-  const [activeTab, setActiveTab] = useState('types')
+function LeaveManagementContent() {
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'types')
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
+
 
   // Leave Types state
   const [leaveTypes, setLeaveTypes] = useState([])
@@ -225,17 +234,17 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to approve request')
-      
+
       // Optionally create schedule exceptions when approving (if they don't exist)
       // Check if exceptions already exist for this leave period
       const checkRes = await fetch(`/api/hr/schedule-exceptions?employee_id=${selectedRequest.employee_id}`)
       const checkJson = await checkRes.json()
       const existingExceptions = checkJson.data || []
-      
+
       const startDate = new Date(selectedRequest.start_date)
       const endDate = new Date(selectedRequest.end_date)
       const missingDates = []
-      
+
       for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0]
         const exists = existingExceptions.some(ex => ex.date === dateStr)
@@ -243,7 +252,7 @@ export default function LeaveManagementPage() {
           missingDates.push(dateStr)
         }
       }
-      
+
       // Create schedule exceptions for missing dates (mark as day off)
       if (missingDates.length > 0) {
         for (const dateStr of missingDates) {
@@ -260,12 +269,12 @@ export default function LeaveManagementPage() {
             }),
           })
         }
-        
+
         showSuccess(`Leave approved. Created ${missingDates.length} schedule exception(s)`, 'Request approved')
       } else {
         showSuccess('Leave request has been approved', 'Request approved')
       }
-      
+
       setApproveRequestOpen(false)
       setSelectedRequest(null)
       await fetchLeaveRequests()
@@ -314,17 +323,17 @@ export default function LeaveManagementPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to change status')
-      
+
       // If approving, create schedule exceptions
       if (values.status === 'approved') {
         const checkRes = await fetch(`/api/hr/schedule-exceptions?employee_id=${selectedRequest.employee_id}`)
         const checkJson = await checkRes.json()
         const existingExceptions = checkJson.data || []
-        
+
         const startDate = new Date(selectedRequest.start_date)
         const endDate = new Date(selectedRequest.end_date)
         const missingDates = []
-        
+
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0]
           const exists = existingExceptions.some(ex => ex.date === dateStr)
@@ -332,7 +341,7 @@ export default function LeaveManagementPage() {
             missingDates.push(dateStr)
           }
         }
-        
+
         if (missingDates.length > 0) {
           for (const dateStr of missingDates) {
             await fetch('/api/hr/schedule-exceptions', {
@@ -350,7 +359,7 @@ export default function LeaveManagementPage() {
           }
         }
       }
-      
+
       showSuccess(`Leave request status changed to ${values.status}`, 'Status updated')
       setChangeStatusOpen(false)
       setSelectedRequest(null)
@@ -508,74 +517,74 @@ export default function LeaveManagementPage() {
                   <Table.Tbody>
                     {leaveRequests.map((request) => {
                       // Handle Supabase join: leave_types might be an object or array
-                      const leaveType = Array.isArray(request.leave_types) 
-                        ? request.leave_types[0] 
+                      const leaveType = Array.isArray(request.leave_types)
+                        ? request.leave_types[0]
                         : request.leave_types
                       const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-                      
+
                       return (
-                      <Table.Tr key={request.id}>
-                        <Table.Td>
-                          {formatEmployeeName(request.employee)}
-                        </Table.Td>
-                        <Table.Td>{leaveTypeName}</Table.Td>
-                        <Table.Td>{request.start_date}</Table.Td>
-                        <Table.Td>{request.end_date}</Table.Td>
-                        <Table.Td>{request.total_days}</Table.Td>
-                        <Table.Td>
-                          <Text size="sm" c={request.reason ? undefined : 'dimmed'}>
-                            {request.reason || '-'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
-                        <Table.Td>
-                          {request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            {request.status === 'pending' && (
-                              <>
-                                <Button
-                                  size="xs"
-                                  color="green"
-                                  leftSection={<IconCheck size={14} />}
-                                  onClick={() => {
-                                    setSelectedRequest(request)
-                                    setApproveRequestOpen(true)
-                                  }}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="xs"
-                                  color="red"
-                                  leftSection={<IconX size={14} />}
-                                  onClick={() => {
-                                    setSelectedRequest(request)
-                                    setRejectRequestOpen(true)
-                                  }}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
-                            <ActionIcon
-                              variant="light"
-                              color="blue"
-                              onClick={() => {
-                                setSelectedRequest(request)
-                                changeStatusForm.setValues({
-                                  status: request.status,
-                                  rejection_reason: request.rejection_reason || '',
-                                })
-                                setChangeStatusOpen(true)
-                              }}
-                            >
-                              <IconEdit size={16} />
-                            </ActionIcon>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
+                        <Table.Tr key={request.id}>
+                          <Table.Td>
+                            {formatEmployeeName(request.employee)}
+                          </Table.Td>
+                          <Table.Td>{leaveTypeName}</Table.Td>
+                          <Table.Td>{request.start_date}</Table.Td>
+                          <Table.Td>{request.end_date}</Table.Td>
+                          <Table.Td>{request.total_days}</Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c={request.reason ? undefined : 'dimmed'}>
+                              {request.reason || '-'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td><LeaveStatusBadge status={request.status} /></Table.Td>
+                          <Table.Td>
+                            {request.requested_at ? new Date(request.requested_at).toLocaleDateString() : '-'}
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs">
+                              {request.status === 'pending' && (
+                                <>
+                                  <Button
+                                    size="xs"
+                                    color="green"
+                                    leftSection={<IconCheck size={14} />}
+                                    onClick={() => {
+                                      setSelectedRequest(request)
+                                      setApproveRequestOpen(true)
+                                    }}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="xs"
+                                    color="red"
+                                    leftSection={<IconX size={14} />}
+                                    onClick={() => {
+                                      setSelectedRequest(request)
+                                      setRejectRequestOpen(true)
+                                    }}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                              <ActionIcon
+                                variant="light"
+                                color="blue"
+                                onClick={() => {
+                                  setSelectedRequest(request)
+                                  changeStatusForm.setValues({
+                                    status: request.status,
+                                    rejection_reason: request.rejection_reason || '',
+                                  })
+                                  setChangeStatusOpen(true)
+                                }}
+                              >
+                                <IconEdit size={16} />
+                              </ActionIcon>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
                       )
                     })}
                     {leaveRequests.length === 0 && (
@@ -700,7 +709,8 @@ export default function LeaveManagementPage() {
             showEmployeeSelect={true}
           />
           <Text size="sm" c="dimmed">
-            Note: When this leave is approved, schedule exceptions will be automatically created as "Day Off" for the leave period. 
+            Note: When this leave is approved, schedule exceptions will be automatically created as &quot;Day Off&quot; for the leave period.
+
             You can customize exceptions (half days, custom times) via the HR Management page after approval.
           </Text>
         </Stack>
@@ -710,28 +720,28 @@ export default function LeaveManagementPage() {
       <Modal opened={approveRequestOpen} onClose={() => setApproveRequestOpen(false)} title="Approve Leave Request">
         <Stack>
           {selectedRequest && (() => {
-            const leaveType = Array.isArray(selectedRequest.leave_types) 
-              ? selectedRequest.leave_types[0] 
+            const leaveType = Array.isArray(selectedRequest.leave_types)
+              ? selectedRequest.leave_types[0]
               : selectedRequest.leave_types
             const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-            
+
             return (
-            <>
-              <Text>
-                <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
-              </Text>
-              <Text>
-                <strong>Leave Type:</strong> {leaveTypeName}
-              </Text>
-              <Text>
-                <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-              </Text>
-              {selectedRequest.reason && (
+              <>
                 <Text>
-                  <strong>Reason:</strong> {selectedRequest.reason}
+                  <strong>Employee:</strong> {selectedRequest.employee ? `${selectedRequest.employee.first_name || ''} ${selectedRequest.employee.last_name || ''}`.trim() : '-'}
                 </Text>
-              )}
-            </>
+                <Text>
+                  <strong>Leave Type:</strong> {leaveTypeName}
+                </Text>
+                <Text>
+                  <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                </Text>
+                {selectedRequest.reason && (
+                  <Text>
+                    <strong>Reason:</strong> {selectedRequest.reason}
+                  </Text>
+                )}
+              </>
             )
           })()}
           <Group justify="flex-end">
@@ -746,23 +756,23 @@ export default function LeaveManagementPage() {
         <form onSubmit={approveForm.onSubmit(handleRejectRequest)}>
           <Stack>
             {selectedRequest && (() => {
-              const leaveType = Array.isArray(selectedRequest.leave_types) 
-                ? selectedRequest.leave_types[0] 
+              const leaveType = Array.isArray(selectedRequest.leave_types)
+                ? selectedRequest.leave_types[0]
                 : selectedRequest.leave_types
               const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-              
+
               return (
-              <>
-                <Text>
-                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
-                </Text>
-                <Text>
-                  <strong>Leave Type:</strong> {leaveTypeName}
-                </Text>
-                <Text>
-                  <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-                </Text>
-              </>
+                <>
+                  <Text>
+                    <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
+                  </Text>
+                  <Text>
+                    <strong>Leave Type:</strong> {leaveTypeName}
+                  </Text>
+                  <Text>
+                    <strong>Duration:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                  </Text>
+                </>
               )
             })()}
             <TextInput
@@ -783,52 +793,52 @@ export default function LeaveManagementPage() {
         <form onSubmit={changeStatusForm.onSubmit(handleChangeStatus)}>
           <Stack>
             {selectedRequest && (() => {
-              const leaveType = Array.isArray(selectedRequest.leave_types) 
-                ? selectedRequest.leave_types[0] 
+              const leaveType = Array.isArray(selectedRequest.leave_types)
+                ? selectedRequest.leave_types[0]
                 : selectedRequest.leave_types
               const leaveTypeName = leaveType?.name || leaveType?.code || '-'
-              
+
               return (
-              <>
-                <Text>
-                  <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
-                </Text>
-                <Text>
-                  <strong>Leave Type:</strong> {leaveTypeName}
-                </Text>
-                <Text>
-                  <strong>Period:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
-                </Text>
-                <Text size="sm" c="dimmed">
-                  <strong>Current Status:</strong> {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1)}
-                </Text>
-                <Select
-                  label="New Status"
-                  placeholder="Select status"
-                  required
-                  data={[
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'approved', label: 'Approved' },
-                    { value: 'rejected', label: 'Rejected' },
-                    { value: 'cancelled', label: 'Cancelled' },
-                  ]}
-                  {...changeStatusForm.getInputProps('status')}
-                />
-                {changeStatusForm.values.status === 'rejected' && (
-                  <TextInput
-                    label="Rejection Reason"
-                    placeholder="Optional"
-                    {...changeStatusForm.getInputProps('rejection_reason')}
+                <>
+                  <Text>
+                    <strong>Employee:</strong> {formatEmployeeName(selectedRequest.employee)}
+                  </Text>
+                  <Text>
+                    <strong>Leave Type:</strong> {leaveTypeName}
+                  </Text>
+                  <Text>
+                    <strong>Period:</strong> {selectedRequest.start_date} to {selectedRequest.end_date} ({selectedRequest.total_days} days)
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <strong>Current Status:</strong> {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1)}
+                  </Text>
+                  <Select
+                    label="New Status"
+                    placeholder="Select status"
+                    required
+                    data={[
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'approved', label: 'Approved' },
+                      { value: 'rejected', label: 'Rejected' },
+                      { value: 'cancelled', label: 'Cancelled' },
+                    ]}
+                    {...changeStatusForm.getInputProps('status')}
                   />
-                )}
-                <Text size="sm" c="dimmed">
-                  Note: Changing status will automatically update leave balances. If approving, schedule exceptions will be created.
-                </Text>
-                <Group justify="flex-end">
-                  <Button variant="default" onClick={() => setChangeStatusOpen(false)}>Cancel</Button>
-                  <Button type="submit">Update Status</Button>
-                </Group>
-              </>
+                  {changeStatusForm.values.status === 'rejected' && (
+                    <TextInput
+                      label="Rejection Reason"
+                      placeholder="Optional"
+                      {...changeStatusForm.getInputProps('rejection_reason')}
+                    />
+                  )}
+                  <Text size="sm" c="dimmed">
+                    Note: Changing status will automatically update leave balances. If approving, schedule exceptions will be created.
+                  </Text>
+                  <Group justify="flex-end">
+                    <Button variant="default" onClick={() => setChangeStatusOpen(false)}>Cancel</Button>
+                    <Button type="submit">Update Status</Button>
+                  </Group>
+                </>
               )
             })()}
           </Stack>
@@ -863,6 +873,14 @@ export default function LeaveManagementPage() {
         </form>
       </Modal>
     </Container>
+  )
+}
+
+export default function LeaveManagementPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LeaveManagementContent />
+    </Suspense>
   )
 }
 

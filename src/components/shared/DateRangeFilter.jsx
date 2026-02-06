@@ -16,21 +16,9 @@ export function DateRangeFilter({ value, onChange, defaultFilter = 'this-month',
   const setDateFilter = onFilterChange || setInternalDateFilter
 
   // Sync internal state with external dateFilter prop
-  useEffect(() => {
-    if (externalDateFilter !== undefined) {
-      setInternalDateFilter(externalDateFilter)
-    }
-  }, [externalDateFilter])
-
-  // Initialize date range based on default filter
-  useEffect(() => {
-    if (defaultFilter && !value) {
-      const range = getDateRangeForFilter(defaultFilter)
-      if (range) {
-        onChange(range)
-      }
-    }
-  }, [defaultFilter])
+  if (externalDateFilter !== undefined && externalDateFilter !== internalDateFilter) {
+    setInternalDateFilter(externalDateFilter)
+  }
 
   const getDateRangeForFilter = (filter) => {
     const now = new Date()
@@ -80,6 +68,17 @@ export function DateRangeFilter({ value, onChange, defaultFilter = 'this-month',
         return null
     }
   }
+
+  // Initialize date range based on default filter
+  useEffect(() => {
+    if (defaultFilter && !value) {
+      const range = getDateRangeForFilter(defaultFilter)
+      if (range) {
+        onChange(range)
+      }
+    }
+  }, [defaultFilter, value, onChange])
+
 
   const handleFilterChange = (filter) => {
     setDateFilter(filter)
