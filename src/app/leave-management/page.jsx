@@ -25,6 +25,7 @@ function LeaveManagementContent() {
     if (tab) setActiveTab(tab)
   }, [searchParams])
 
+
   // Leave Types state
   const [leaveTypes, setLeaveTypes] = useState([])
   const [leaveTypesLoading, setLeaveTypesLoading] = useState(false)
@@ -759,6 +760,7 @@ function LeaveManagementContent() {
           />
           <Text size="sm" c="dimmed">
             Note: When this leave is approved, schedule exceptions will be automatically created as &quot;Day Off&quot; for the leave period.
+
             You can customize exceptions (half days, custom times) via the HR Management page after approval.
           </Text>
         </Stack>
@@ -921,6 +923,14 @@ function LeaveManagementContent() {
         </form>
       </Modal>
     </Container >
+  )
+}
+
+export default function LeaveManagementPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LeaveManagementContent />
+    </Suspense>
   )
 }
 
