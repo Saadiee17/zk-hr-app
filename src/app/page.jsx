@@ -23,7 +23,11 @@ import {
   TextInput,
   Indicator,
   ThemeIcon,
-  Divider
+  Divider,
+  Avatar,
+  ScrollArea,
+  Tooltip,
+  Center
 } from '@mantine/core'
 import {
   IconRefresh,
@@ -1095,267 +1099,172 @@ function Dashboard({ isCollapsed }) {
             </Stack>
           </UniversalTabs.Panel>
 
-          {/* Modals for Late, Absent, and On-Time Employees */}
-          <Modal
-            opened={lateModalOpen}
-            onClose={() => setLateModalOpen(false)}
-            title={
-              <Text fw={600} size="lg">Employees Late-In Today</Text>
+          {/* Stat Detail Modals - REDESIGNED */}
+          {[
+            {
+              open: lateModalOpen,
+              set: setLateModalOpen,
+              data: lateEmployees,
+              title: 'Personnel Late-In',
+              subtitle: 'Team members arriving after scheduled threshold',
+              icon: <IconClock size={24} />,
+              color: 'orange'
+            },
+            {
+              open: absentModalOpen,
+              set: setAbsentModalOpen,
+              data: absentEmployees,
+              title: 'Personnel Absent',
+              subtitle: 'No attendance activity recorded for today',
+              icon: <IconUserX size={24} />,
+              color: 'red'
+            },
+            {
+              open: onTimeModalOpen,
+              set: setOnTimeModalOpen,
+              data: onTimeEmployees,
+              title: 'Personnel On-Time',
+              subtitle: 'Optimal punctuality threshold achieved',
+              icon: <IconUserCheck size={24} />,
+              color: 'teal'
+            },
+            {
+              open: presentModalOpen,
+              set: setPresentModalOpen,
+              data: presentEmployees,
+              title: 'Total Personnel Present',
+              subtitle: 'Consolidated report of all active onsite personnel',
+              icon: <IconUsers size={24} />,
+              color: 'blue'
+            },
+            {
+              open: punchOutMissingModalOpen,
+              set: setPunchOutMissingModalOpen,
+              data: punchOutMissingEmployees,
+              title: 'Missing Punch-Out',
+              subtitle: 'Active sessions requiring terminal synchronization',
+              icon: <IconAlertCircle size={24} />,
+              color: 'yellow'
             }
-            size="xl"
-            styles={{
-              body: { padding: 'var(--mantine-spacing-lg)' },
-              content: { maxWidth: '1000px' }
-            }}
-          >
-            {lateEmployees.length === 0 ? (
-              <Text c="dimmed" ta="center" py="xl" size="lg">No late employees</Text>
-            ) : (
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                withColumnBorders={false}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {lateEmployees.map((emp) => (
-                    <Table.Tr key={emp.id}>
-                      <Table.Td>
-                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                          <Text component="span" className="employee-name-link" fw={500}>
-                            {emp.name}
-                          </Text>
-                        </Link>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.department}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.schedule}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace">
-                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace" c="dimmed">
-                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </Modal>
-
-          <Modal
-            opened={absentModalOpen}
-            onClose={() => setAbsentModalOpen(false)}
-            title={
-              <Text fw={600} size="lg">Employees Absent Today</Text>
-            }
-            size="xl"
-            styles={{
-              body: { padding: 'var(--mantine-spacing-lg)' },
-              content: { maxWidth: '900px' }
-            }}
-          >
-            {absentEmployees.length === 0 ? (
-              <Text c="dimmed" ta="center" py="xl" size="lg">No absent employees</Text>
-            ) : (
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                withColumnBorders={false}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {absentEmployees.map((emp) => (
-                    <Table.Tr key={emp.id}>
-                      <Table.Td>
-                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                          <Text component="span" className="employee-name-link" fw={500}>
-                            {emp.name}
-                          </Text>
-                        </Link>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.department}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.schedule}</Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </Modal>
-
-          <Modal
-            opened={onTimeModalOpen}
-            onClose={() => setOnTimeModalOpen(false)}
-            title={
-              <Text fw={600} size="lg">Employees On-Time Today</Text>
-            }
-            size="xl"
-            styles={{
-              body: { padding: 'var(--mantine-spacing-lg)' },
-              content: { maxWidth: '1000px' }
-            }}
-          >
-            {onTimeEmployees.length === 0 ? (
-              <Text c="dimmed" ta="center" py="xl" size="lg">No on-time employees</Text>
-            ) : (
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                withColumnBorders={false}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {onTimeEmployees.map((emp) => (
-                    <Table.Tr key={emp.id}>
-                      <Table.Td>
-                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                          <Text component="span" className="employee-name-link" fw={500}>
-                            {emp.name}
-                          </Text>
-                        </Link>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.department}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.schedule}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace">
-                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace" c="dimmed">
-                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </Modal>
-
-          <Modal
-            opened={presentModalOpen}
-            onClose={() => setPresentModalOpen(false)}
-            title={
-              <Text fw={600} size="lg">Employees Present Today</Text>
-            }
-            size="xl"
-            styles={{
-              body: { padding: 'var(--mantine-spacing-lg)' },
-              content: { maxWidth: '1200px' }
-            }}
-          >
-            {presentEmployees.length === 0 ? (
-              <Text c="dimmed" ta="center" py="xl" size="lg">No present employees</Text>
-            ) : (
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                withColumnBorders={false}
-                style={{ tableLayout: 'auto' }}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                    <Table.Th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>Status</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-Out Time</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {presentEmployees.map((emp) => (
-                    <Table.Tr key={emp.id}>
-                      <Table.Td>
-                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                          <Text component="span" className="employee-name-link" fw={500}>
-                            {emp.name}
-                          </Text>
-                        </Link>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.department}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.schedule}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          color={
-                            emp.status === 'On-Time' ? 'green' :
-                              emp.status === 'Late-In' ? 'orange' :
-                                'yellow'
-                          }
-                          size="md"
-                          variant="light"
-                          style={{ whiteSpace: 'nowrap' }}
+          ].map((modal) => (
+            <Modal
+              key={modal.title}
+              opened={modal.open}
+              onClose={() => modal.set(false)}
+              size="1000px"
+              radius="32px"
+              padding="32px"
+              title={
+                <Group gap="md">
+                  <ThemeIcon variant="light" color={modal.color} size="xl" radius="md">
+                    {modal.icon}
+                  </ThemeIcon>
+                  <Box>
+                    <Text fw={900} size="xl" ls={-0.5}>{modal.title}</Text>
+                    <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={0.5}>{modal.subtitle}</Text>
+                  </Box>
+                </Group>
+              }
+              styles={{
+                content: {
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0 30px 60px -10px rgba(0,0,0,0.12)',
+                  border: '1px solid rgba(0,0,0,0.08)'
+                },
+                header: { paddingBottom: '24px', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+              }}
+            >
+              {modal.data.length === 0 ? (
+                <Center py={60}>
+                  <Stack align="center" gap="xs">
+                    <ThemeIcon variant="light" color="gray" size={60} radius="xl">
+                      <IconSearch size={30} stroke={1.5} />
+                    </ThemeIcon>
+                    <Text fw={700} c="dimmed">No Personnel Records</Text>
+                    <Text size="sm" c="dimmed">Data is synchronized and up-to-date.</Text>
+                  </Stack>
+                </Center>
+              ) : (
+                <ScrollArea.Autosize maxHeight="70vh" offsetScrollbars>
+                  <Grid gutter="xs" pt="md">
+                    {modal.data.map((emp) => (
+                      <Grid.Col key={emp.id} span={{ base: 12, sm: 6 }}>
+                        <Paper
+                          p="md"
+                          radius="lg"
+                          withBorder
+                          component={Link}
+                          href={`/employees/${emp.id}`}
+                          onClick={() => modal.set(false)}
+                          style={{
+                            textDecoration: 'none',
+                            color: 'inherit',
+                            transition: 'all 0.15s ease',
+                            backgroundColor: '#fafafa',
+                          }}
+                          className="hover-card-minimal"
                         >
-                          {emp.status}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace">
-                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text
-                          size="sm"
-                          ff="monospace"
-                          c={emp.outTime ? undefined : 'dimmed'}
-                          fw={emp.outTime ? undefined : 500}
-                        >
-                          {emp.outTime ? formatUTC12HourTime(emp.outTime) : 'Still Working'}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </Modal>
+                          <Group gap="md" wrap="nowrap">
+                            <Avatar
+                              size="md"
+                              radius="md"
+                              color={modal.color}
+                              variant="light"
+                              fw={800}
+                            >
+                              {emp.name?.[0]}
+                            </Avatar>
+                            <Box style={{ flex: 1 }}>
+                              <Group justify="space-between" mb={4} wrap="nowrap">
+                                <Text fw={700} size="sm" truncate>{emp.name}</Text>
+                                {emp.status && (
+                                  <Badge
+                                    size="xs"
+                                    variant="filled"
+                                    color={
+                                      emp.status === 'On-Time' ? 'teal.7' :
+                                        emp.status === 'Late-In' ? 'orange.8' : 'gray.6'
+                                    }
+                                    radius="sm"
+                                  >
+                                    {emp.status}
+                                  </Badge>
+                                )}
+                              </Group>
+
+                              <Group gap={8} align="center">
+                                <Text size="xs" c="dimmed" fw={600}>{emp.department}</Text>
+                                <Divider orientation="vertical" h={10} />
+                                <Text size="xs" c="dimmed" fw={600}>{emp.schedule}</Text>
+                              </Group>
+
+                              {(emp.inTime || emp.outTime) && (
+                                <Group gap={4} mt={8}>
+                                  {emp.inTime && (
+                                    <Group gap={4} px={8} py={2} bg="white" style={{ borderRadius: '4px', border: '1px solid #eee' }}>
+                                      <Text size="9px" fw={800} c="blue.8" tt="uppercase">In</Text>
+                                      <Text size="xs" ff="monospace" fw={600}>{formatUTC12HourTime(emp.inTime)}</Text>
+                                    </Group>
+                                  )}
+                                  {emp.outTime && (
+                                    <Group gap={4} px={8} py={2} bg="white" style={{ borderRadius: '4px', border: '1px solid #eee' }}>
+                                      <Text size="9px" fw={800} c="gray.7" tt="uppercase">Out</Text>
+                                      <Text size="xs" ff="monospace" fw={600}>{formatUTC12HourTime(emp.outTime)}</Text>
+                                    </Group>
+                                  )}
+                                </Group>
+                              )}
+                            </Box>
+                          </Group>
+                        </Paper>
+                      </Grid.Col>
+                    ))}
+                  </Grid>
+                </ScrollArea.Autosize>
+              )}
+            </Modal>
+          ))}
+
 
           <UniversalTabs.Panel value="logs" pt="xl">
             <Stack gap="lg">
@@ -1475,65 +1384,7 @@ function Dashboard({ isCollapsed }) {
           </UniversalTabs.Panel>
         </UniversalTabs >
 
-        {/* Punch Out Missing Modal */}
-        <Modal
-          opened={punchOutMissingModalOpen}
-          onClose={() => setPunchOutMissingModalOpen(false)}
-          title={
-            <Text fw={600} size="lg">Employees with Missing Punch Out</Text>
-          }
-          size="xl"
-          styles={{
-            body: { padding: 'var(--mantine-spacing-lg)' },
-            content: { maxWidth: '1000px' }
-          }}
-        >
-          {
-            punchOutMissingEmployees.length === 0 ? (
-              <Text c="dimmed" ta="center" py="xl" size="lg">No employees with missing punch out</Text>
-            ) : (
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                withColumnBorders={false}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {punchOutMissingEmployees.map((emp) => (
-                    <Table.Tr key={emp.id}>
-                      <Table.Td>
-                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                          <Text component="span" className="employee-name-link" fw={500}>
-                            {emp.name}
-                          </Text>
-                        </Link>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.department}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{emp.schedule}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace">
-                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )
-          }
-        </Modal >
+
 
         {/* Alerts Modal */}
         < Modal

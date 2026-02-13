@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Container, Title, Paper, Group, Text, Stack, Divider, Grid, Badge, ActionIcon, Select, Modal, TextInput, Button, Switch, LoadingOverlay } from '@mantine/core'
+import { Container, Title, Paper, Group, Text, Stack, Divider, Grid, Badge, ActionIcon, Select, Modal, TextInput, Button, Switch, LoadingOverlay, Avatar, ThemeIcon, Box, Tooltip } from '@mantine/core'
 import { IconEdit, IconCalendar, IconUser, IconBuilding, IconId, IconClock, IconMail, IconPhone, IconBriefcase, IconShield, IconBadge } from '@tabler/icons-react'
 import { Calendar, TimeInput } from '@mantine/dates'
 import { showSuccess, showError } from '@/utils/notifications'
@@ -276,140 +276,196 @@ export function EmployeeProfileReporting({ employeeId, isAdminView = false }) {
 
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
-      <Group justify="space-between" mb="md">
-        <Title order={1}>{isAdminView ? 'Employee Profile' : 'My Attendance Report'}</Title>
-        {isAdminView && employee && (
-          <ActionIcon
-            variant="light"
-            color="blue"
-            size="lg"
-            aria-label="Edit Employee"
-            onClick={() => {
-              editForm.setValues({
-                full_name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
-                department_id: employee.department_id || null,
-                privilege: employee.privilege ?? 0,
-                is_active: Boolean(employee.is_active),
-                card_number: employee.card_number || '',
-                individual_tz_1: employee.individual_tz_1 ?? null,
-                individual_tz_2: employee.individual_tz_2 ?? null,
-                individual_tz_3: employee.individual_tz_3 ?? null,
-              })
-              fetchExceptions(employee.id)
-              fetchLeaveRequests(employee.id)
-              setAssignOpen(true)
-            }}
-          >
-            <IconEdit size={20} />
-          </ActionIcon>
-        )}
-      </Group>
-      <Paper withBorder shadow="sm" p="md" pos="relative">
-        <LoadingOverlay visible={loading} />
-        {employee ? (
-          <Stack>
-            {/* Employee Details Section */}
-            <Paper withBorder p="md" radius="md" style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-              <Title order={3} mb="md" size="h4">Employee Information</Title>
-              <Grid gutter="md">
-                {profileItems.map((it) => {
-                  const getIcon = (label) => {
-                    switch (label) {
-                      case 'Name': return <IconUser size={18} />
-                      case 'Department': return <IconBuilding size={18} />
-                      case 'Employee ID': return <IconId size={18} />
-                      case 'ZK User ID': return <IconBadge size={18} />
-                      case 'Schedule': return <IconClock size={18} />
-                      case 'Status': return <IconShield size={18} />
-                      case 'Email': return <IconMail size={18} />
-                      case 'Phone': return <IconPhone size={18} />
-                      case 'Position': return <IconBriefcase size={18} />
-                      case 'Privilege': return <IconShield size={18} />
-                      default: return null
-                    }
-                  }
+      <Stack gap="xl">
+        <Group justify="space-between" align="flex-end">
+          <Group gap="xl">
+            <Avatar
+              size={120}
+              radius="24px"
+              color="blue"
+              variant="light"
+              style={{ border: '2px solid var(--mantine-color-blue-1)' }}
+            >
+              <Text size="42px" fw={900}>
+                {employee ? `${employee.first_name?.[0] || ''}${employee.last_name?.[0] || ''}` : <IconUser size={40} />}
+              </Text>
+            </Avatar>
+            <Box>
+              <Badge variant="light" color={employee?.is_active ? 'teal' : 'red'} size="lg" mb="sm" fw={800} radius="sm">
+                {employee?.is_active ? 'STATUS: ACTIVE' : 'STATUS: DEACTIVATED'}
+              </Badge>
+              <Title order={1} fw={900} style={{ letterSpacing: '-1.5px', fontSize: '42px', color: '#1a1b1e' }}>
+                {employee ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim() : 'Anonymous User'}
+              </Title>
+              <Group gap="xs" mt={4}>
+                <Text fw={700} size="sm" c="blue.8">{employee?.position || 'TEAM MEMBER'}</Text>
+                <Divider orientation="vertical" h={12} />
+                <Text fw={700} size="sm" c="gray.7">{employee?.department?.name || 'UNASSIGNED UNIT'}</Text>
+              </Group>
+            </Box>
+          </Group>
 
-                  const isHighlighted = it.label === 'Name' || it.label === 'Status'
-                  const isStatus = it.label === 'Status'
+          {isAdminView && employee && (
+            <Button
+              variant="light"
+              color="blue"
+              size="md"
+              radius="xl"
+              leftSection={<IconEdit size={18} />}
+              onClick={() => {
+                editForm.setValues({
+                  full_name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+                  department_id: employee.department_id || null,
+                  privilege: employee.privilege ?? 0,
+                  is_active: Boolean(employee.is_active),
+                  card_number: employee.card_number || '',
+                  individual_tz_1: employee.individual_tz_1 ?? null,
+                  individual_tz_2: employee.individual_tz_2 ?? null,
+                  individual_tz_3: employee.individual_tz_3 ?? null,
+                })
+                fetchExceptions(employee.id)
+                fetchLeaveRequests(employee.id)
+                setAssignOpen(true)
+              }}
+            >
+              Edit Identity
+            </Button>
+          )}
+        </Group>
 
-                  return (
-                    <Grid.Col key={it.label} span={{ base: 12, sm: 6, md: 4 }}>
-                      <Group gap="xs" align="flex-start">
-                        <div style={{
-                          color: 'var(--mantine-color-gray-6)',
-                          marginTop: '2px'
-                        }}>
-                          {getIcon(it.label)}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <Text size="xs" c="dimmed" fw={500} mb={4}>
-                            {it.label}
-                          </Text>
-                          {isStatus ? (
-                            <Badge
-                              color={it.value === 'Enabled' ? 'green' : 'red'}
-                              variant="light"
-                              size="sm"
+        <Paper
+          radius="xl"
+          p="32px"
+          withBorder
+          style={{
+            backgroundColor: '#ffffff',
+            boxShadow: '0 20px 40px -10px rgba(0,0,0,0.06)'
+          }}
+        >
+          <LoadingOverlay visible={loading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
+          {employee ? (
+            <Stack gap="xl">
+              <Grid gutter="xl">
+                <Grid.Col span={{ base: 12, md: 8 }}>
+                  <Box>
+                    <Text fw={800} size="xs" tt="uppercase" c="dimmed" ls={1.5} mb="xl">Employee Lifecycle & Details</Text>
+                    <Grid gutter="lg">
+                      {profileItems.filter(it => !['Name', 'Status', 'Position', 'Department'].includes(it.label)).map((it) => {
+                        const getIcon = (label) => {
+                          switch (label) {
+                            case 'Employee ID': return <IconId size={18} />
+                            case 'ZK User ID': return <IconBadge size={18} />
+                            case 'Schedule': return <IconClock size={14} />
+                            case 'Email': return <IconMail size={18} />
+                            case 'Phone': return <IconPhone size={18} />
+                            case 'Privilege': return <IconShield size={18} />
+                            default: return null
+                          }
+                        }
+
+                        return (
+                          <Grid.Col key={it.label} span={{ base: 12, sm: 6 }}>
+                            <Box
+                              p="md"
+                              style={{
+                                backgroundColor: '#fcfcfc',
+                                borderLeft: '3px solid var(--mantine-color-blue-6)',
+                                borderRadius: '4px'
+                              }}
                             >
-                              {it.value}
-                            </Badge>
-                          ) : (
-                            <Text
-                              fw={isHighlighted ? 700 : 600}
-                              size={isHighlighted ? "md" : "sm"}
-                              c={it.value === 'N/A' ? 'dimmed' : undefined}
-                              style={{ wordBreak: 'break-word' }}
-                            >
-                              {it.value}
-                            </Text>
-                          )}
-                        </div>
+                              <Group gap="sm" wrap="nowrap">
+                                <Box style={{ flex: 1 }}>
+                                  <Text size="10px" c="dimmed" fw={800} tt="uppercase" ls={1} mb={2}>{it.label}</Text>
+                                  <Text fw={700} size="md" c={it.value === 'N/A' ? 'dimmed' : 'dark'}>
+                                    {it.value}
+                                  </Text>
+                                </Box>
+                              </Group>
+                            </Box>
+                          </Grid.Col>
+                        )
+                      })}
+                    </Grid>
+                  </Box>
+                </Grid.Col>
+
+                <Grid.Col span={{ base: 12, md: 4 }}>
+                  <Paper p="xl" radius="xl" bg="#1a1b1e" c="white">
+                    <Stack gap="xl">
+                      <Group justify="space-between">
+                        <Text fw={800} size="xs" tt="uppercase" ls={1.2} c="blue.4">Security Clearances</Text>
+                        <IconShield size={20} color="var(--mantine-color-blue-4)" />
                       </Group>
-                    </Grid.Col>
-                  )
-                })}
-              </Grid>
-            </Paper>
-            <Divider my="sm" />
-            <Stack gap="md">
-              <div>
-                <Text size="sm" fw={500} mb="xs">Quick Filters</Text>
-                <DateRangeFilter
-                  value={dateRange}
-                  onChange={setDateRange}
-                  defaultFilter={dateFilter}
-                  dateFilter={dateFilter}
-                  onFilterChange={setDateFilter}
-                />
-              </div>
 
-              <Select
-                label="Filter by Status"
-                placeholder="All Statuses"
-                data={statusOptions}
-                value={statusFilter}
-                onChange={setStatusFilter}
-                clearable
-                style={{ minWidth: 200 }}
+                      <Box>
+                        <Text size="10px" opacity={0.6} fw={800} tt="uppercase" ls={1}>Access Privilege</Text>
+                        <Text fw={900} size="xl" mt={4} style={{ letterSpacing: '-0.5px' }}>
+                          {employee.privilege_text || (employee.privilege === 0 ? 'Normal User' : 'Executive Admin')}
+                        </Text>
+                      </Box>
+
+                      <Divider opacity={0.1} />
+
+                      <Box>
+                        <Text size="10px" opacity={0.6} fw={800} tt="uppercase" ls={1}>Personnel Hash</Text>
+                        <Text fw={700} size="sm" mt={4} ff="monospace">{employee.employee_id || 'ZK-SYSTEM-NODE'}</Text>
+                      </Box>
+
+                      <Box mt="md">
+                        <Badge fullWidth radius="xs" variant="filled" color="blue.7" size="lg" py="md">
+                          AUTHORIZED PERSONNEL
+                        </Badge>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                </Grid.Col>
+              </Grid>
+
+              <Divider variant="dashed" />
+
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-end">
+                  <Box style={{ flex: 1 }}>
+                    <Text size="sm" fw={800} tt="uppercase" c="dimmed" ls={1} mb="xs">Temporal Window</Text>
+                    <DateRangeFilter
+                      value={dateRange}
+                      onChange={setDateRange}
+                      defaultFilter={dateFilter}
+                      dateFilter={dateFilter}
+                      onFilterChange={setDateFilter}
+                    />
+                  </Box>
+
+                  <Select
+                    label={<Text size="sm" fw={800} tt="uppercase" c="dimmed" ls={1}>Status Filter</Text>}
+                    placeholder="All Operational States"
+                    data={statusOptions}
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    clearable
+                    radius="md"
+                    size="sm"
+                    style={{ minWidth: 220 }}
+                  />
+                </Group>
+              </Stack>
+
+              {/* Adherence Metrics Visualization */}
+              {reportRows.length > 0 && (
+                <AdherenceMetrics metrics={adherenceMetrics} />
+              )}
+
+              <AttendanceTable
+                data={reportRows}
+                loading={reportLoading}
+                filteredData={filteredRows}
               />
             </Stack>
-
-            {/* Adherence Metrics Visualization */}
-            {reportRows.length > 0 && (
-              <AdherenceMetrics metrics={adherenceMetrics} />
-            )}
-
-            {/* Attendance Table */}
-            <AttendanceTable
-              data={reportRows}
-              loading={reportLoading}
-              filteredData={filteredRows}
-            />
-          </Stack>
-        ) : (
-          <Text c="dimmed">No employee found</Text>
-        )}
-      </Paper>
+          ) : (
+            <Text c="dimmed" ta="center" py="xl">No employee identity discovered in the system.</Text>
+          )}
+        </Paper>
+      </Stack>
 
       {/* Admin-only modals */}
       {isAdminView && (

@@ -35,10 +35,10 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
     const dateInfo = formatDateWithDay(r.date)
     const isWeekend = dateInfo.dayName === 'Saturday' || dateInfo.dayName === 'Sunday'
     const uniqueKey = `${r.date}-${idx}`
-    
+
     return (
       <Fragment key={uniqueKey}>
-        <Table.Tr 
+        <Table.Tr
           style={{ cursor: showExpandableRows ? 'pointer' : 'default' }}
           onClick={() => toggleRow(r.date)}
         >
@@ -50,8 +50,8 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
                 </ActionIcon>
               )}
               <div>
-                <Text 
-                  fw={isWeekend ? 600 : 500} 
+                <Text
+                  fw={isWeekend ? 600 : 500}
                   size="sm"
                   c={isWeekend ? 'blue' : undefined}
                   style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}
@@ -131,18 +131,33 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
   })
 
   return (
-    <Paper withBorder p="sm" pos="relative" mt="md">
-      <LoadingOverlay visible={loading} />
-      <Table striped highlightOnHover withTableBorder withColumnBorders>
+    <Paper
+      shadow="xs"
+      radius="lg"
+      pos="relative"
+      mt="md"
+      style={{
+        overflow: 'hidden',
+        border: '1px solid rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <LoadingOverlay visible={loading} overlayBlur={2} />
+      <Table
+        verticalSpacing="md"
+        horizontalSpacing="lg"
+        highlightOnHover
+      >
         <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Date</Table.Th>
-            <Table.Th>In Time</Table.Th>
-            <Table.Th>Out Time</Table.Th>
-            <Table.Th>Regular Hours</Table.Th>
-            <Table.Th>Overtime Hours</Table.Th>
-            <Table.Th>Total Hours</Table.Th>
-            <Table.Th>Status</Table.Th>
+          <Table.Tr style={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Date</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>In Time</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Out Time</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Regular</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Overtime</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Total</Table.Th>
+            <Table.Th style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', color: 'var(--mantine-color-dimmed)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Status</Table.Th>
           </Table.Tr>
         </Table.Thead>
         {filteredData !== null && filteredData.length === 0 && data.length > 0 && (
@@ -156,12 +171,12 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
           {rows}
           {(!data || data.length === 0) && (
             <Table.Tr>
-              <Table.Td colSpan={7}><Text c="dimmed">No records</Text></Table.Td>
+              <Table.Td colSpan={7} ta="center" py="xl"><Text c="dimmed" fs="italic">No attendance records found for this period.</Text></Table.Td>
             </Table.Tr>
           )}
           {data.length > 0 && displayData.length === 0 && (
             <Table.Tr>
-              <Table.Td colSpan={7}><Text c="dimmed">No records match the selected filter</Text></Table.Td>
+              <Table.Td colSpan={7} ta="center" py="xl"><Text c="dimmed" fs="italic">No records match the selected status filter.</Text></Table.Td>
             </Table.Tr>
           )}
         </Table.Tbody>

@@ -6,7 +6,15 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from('departments')
-      .select('*')
+      .select(`
+        *,
+        schedules:schedules(
+          tz_id_1, tz_id_2, tz_id_3,
+          tz1:time_zones!schedules_tz_id_1_fkey(name),
+          tz2:time_zones!schedules_tz_id_2_fkey(name),
+          tz3:time_zones!schedules_tz_id_3_fkey(name)
+        )
+      `)
       .order('name', { ascending: true })
 
     if (error) {

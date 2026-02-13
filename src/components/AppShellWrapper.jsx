@@ -1,6 +1,6 @@
 'use client'
 
-import { Burger, useMantineTheme } from '@mantine/core'
+import { Burger, useMantineTheme, useComputedColorScheme } from '@mantine/core'
 import { useDisclosure, useMediaQuery } from '@mantine/hooks'
 import { usePathname } from 'next/navigation'
 import { Navbar } from './Navbar'
@@ -9,13 +9,15 @@ import React from 'react'
 
 export function AppShellWrapper({ children }) {
   const theme = useMantineTheme()
+  const computedColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
+  const isDark = computedColorScheme === 'dark';
   const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure(false)
   const [desktopCollapsed, { toggle: toggleDesktop }] = useDisclosure(false)
   const pathname = usePathname()
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`)
 
-  const navbarBg = theme.colorScheme === 'dark' ? theme.colors.dark[8] : theme.white
-  const sidebarWidth = desktopCollapsed ? 80 : 200
+  const navbarBg = isDark ? theme.colors.dark[8] : theme.white
+  const sidebarWidth = desktopCollapsed ? 84 : 260
 
   const handleNavigate = () => {
     if (isMobile) {
@@ -38,7 +40,7 @@ export function AppShellWrapper({ children }) {
   const NavComponent = isEmployeeRoute ? EmployeeNavbar : Navbar
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: isDark ? '#0a0a0a' : '#f8f9fa' }}>
       {/* ─── Desktop Sidebar ─── */}
       {!isMobile && (
         <nav
@@ -48,13 +50,23 @@ export function AppShellWrapper({ children }) {
             height: '100vh',
             position: 'sticky',
             top: 0,
-            backgroundColor: navbarBg,
-            borderRight: '1px solid rgba(0,0,0,0.05)',
-            transition: 'width 0.3s ease, min-width 0.3s ease',
+            backgroundColor: isDark
+              ? 'rgba(26, 27, 30, 0.8)'
+              : 'rgba(255, 255, 255, 0.8)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRight: isDark
+              ? '1px solid rgba(255, 255, 255, 0.05)'
+              : '1px solid rgba(0, 0, 0, 0.05)',
+            boxShadow: '0 0 20px rgba(0,0,0,0.02)',
+            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
             overflowX: 'hidden',
             overflowY: 'auto',
             flexShrink: 0,
-            padding: desktopCollapsed ? '8px' : '12px 8px',
+            padding: '16px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 100,
           }}
         >
           <NavComponent
@@ -74,7 +86,8 @@ export function AppShellWrapper({ children }) {
             style={{
               position: 'fixed',
               inset: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              backdropFilter: 'blur(4px)',
               zIndex: 200,
               transition: 'opacity 0.3s ease',
             }}
@@ -85,13 +98,19 @@ export function AppShellWrapper({ children }) {
               position: 'fixed',
               left: 0,
               top: 0,
-              width: 260,
+              width: 280,
               height: '100vh',
-              backgroundColor: navbarBg,
-              borderRight: '1px solid rgba(0,0,0,0.05)',
+              backgroundColor: isDark
+                ? 'rgba(26, 27, 30, 0.95)'
+                : 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(16px)',
+              borderRight: isDark
+                ? '1px solid rgba(255, 255, 255, 0.1)'
+                : '1px solid rgba(0, 0, 0, 0.1)',
               zIndex: 201,
               overflowY: 'auto',
-              padding: '12px 8px',
+              padding: '20px 16px',
+              boxShadow: '10px 0 30px rgba(0,0,0,0.1)',
             }}
           >
             <NavComponent

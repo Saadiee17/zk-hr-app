@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid } from '@mantine/core'
-import { IconEdit, IconCalendar, IconSearch, IconLockOpen } from '@tabler/icons-react'
+import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid, Box, Badge, Skeleton, Avatar, Tooltip, ThemeIcon } from '@mantine/core'
+import { IconEdit, IconCalendar, IconSearch, IconLockOpen, IconBriefcase, IconUsers } from '@tabler/icons-react'
 import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
 import { Calendar, TimeInput } from '@mantine/dates'
@@ -96,8 +96,12 @@ export default function EmployeeManagementPage() {
   }
 
   const getSortIndicator = (key) => {
-    if (empSort.key !== key) return <IconSelector size={14} style={{ opacity: 0.4 }} />
-    return empSort.dir === 'asc' ? '▲' : '▼'
+    if (empSort.key !== key) return <IconSelector size={14} style={{ opacity: 0.2 }} />
+    return (
+      <ThemeIcon variant="light" size={18} radius="xl" color="blue">
+        {empSort.dir === 'asc' ? '▲' : '▼'}
+      </ThemeIcon>
+    )
   }
 
   const safeLower = (v) => (typeof v === 'string' ? v.toLowerCase() : '')
@@ -324,139 +328,303 @@ export default function EmployeeManagementPage() {
     }
   }
 
-  const empRows = empSorted.map((e) => (
-    <Table.Tr key={e.id}>
-      <Table.Td>
-        <Link href={`/employees/${e.id}`} style={{ textDecoration: 'none' }}>
-          {`${e.first_name || ''} ${e.last_name || ''}`.trim() || e.employee_id || 'Unknown'}
-        </Link>
-      </Table.Td>
-      <Table.Td>{e.zk_user_id ?? ''}</Table.Td>
-      <Table.Td>{e?.department?.name || ''}</Table.Td>
-      <Table.Td>{e?.primary_schedule || 'Not Assigned'}</Table.Td>
-      <Table.Td>{e?.privilege_text ?? e?.privilege ?? ''}</Table.Td>
-      <Table.Td>{e?.is_active ? 'Enabled' : 'Disabled'}</Table.Td>
-      <Table.Td>
-        <Group gap="xs">
-          <ActionIcon variant="light" color="blue" aria-label="Edit" onClick={() => {
-            setAssignEmp(e)
-            editForm.setValues({
-              full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
-              department_id: e.department_id || null,
-              privilege: e.privilege ?? 0,
-              is_active: Boolean(e.is_active),
-              card_number: e.card_number || '',
-              individual_tz_1: e.individual_tz_1 ?? null,
-              individual_tz_2: e.individual_tz_2 ?? null,
-              individual_tz_3: e.individual_tz_3 ?? null,
-            })
-            fetchExceptions(e.id)
-            fetchLeaveRequests(e.id)
-            setAssignOpen(true)
-          }}>
-            <IconEdit size={18} />
-          </ActionIcon>
-          <ActionIcon variant="light" color="orange" aria-label="Reset Password" onClick={() => {
-            setResetPasswordEmployee(e)
-            setResetPasswordModal(true)
-          }}>
-            <IconLockOpen size={18} />
-          </ActionIcon>
-        </Group>
-      </Table.Td>
-    </Table.Tr>
-  ))
+  const empRows = empSorted.map((e) => {
+    const initials = `${e.first_name?.[0] || ''}${e.last_name?.[0] || ''}`.toUpperCase()
+    return (
+      <Table.Tr key={e.id} style={{ transition: 'all 0.2s ease', borderBottom: '1px solid rgba(0,0,0,0.03)' }}>
+        <Table.Td>
+          <Group gap="sm" wrap="nowrap">
+            <Avatar size="md" radius="xl" color="blue" variant="light" src={null} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              {initials || '?'}
+            </Avatar>
+            <Stack gap={0}>
+              <Link href={`/employees/${e.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <Text fw={700} size="sm" style={{ color: 'var(--mantine-color-blue-9)', cursor: 'pointer', transition: 'color 0.2s ease' }} className="hover-blue">
+                  {`${e.first_name || ''} ${e.last_name || ''}`.trim() || 'Unknown'}
+                </Text>
+              </Link>
+              <Text size="xs" c="dimmed" fw={500} style={{ letterSpacing: '0.3px' }}>{e.employee_id || 'No ID'}</Text>
+            </Stack>
+          </Group>
+        </Table.Td>
+        <Table.Td>
+          <Badge variant="outline" color="gray" radius="sm" size="sm" fw={700}>
+            {e.zk_user_id ?? '—'}
+          </Badge>
+        </Table.Td>
+        <Table.Td>
+          <Text size="sm" fw={600} c="dark.3">{e?.department?.name || '—'}</Text>
+        </Table.Td>
+        <Table.Td>
+          <Badge
+            variant="light"
+            color={e?.primary_schedule ? 'blue' : 'gray'}
+            size="sm"
+            radius="xl"
+            px={10}
+            leftSection={e?.primary_schedule ? <Box style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--mantine-color-blue-filled)' }} /> : null}
+          >
+            {e?.primary_schedule || 'NOT ASSIGNED'}
+          </Badge>
+        </Table.Td>
+        <Table.Td>
+          <Text size="xs" fw={800} tt="uppercase" c="dimmed" style={{ letterSpacing: '1px', opacity: 0.7 }}>
+            {e?.privilege_text ?? e?.privilege ?? 'USER'}
+          </Text>
+        </Table.Td>
+        <Table.Td>
+          <Badge
+            color={e?.is_active ? 'teal' : 'red'}
+            variant="dot"
+            radius="xl"
+            size="md"
+            fw={700}
+          >
+            {e?.is_active ? 'Active' : 'Disabled'}
+          </Badge>
+        </Table.Td>
+        <Table.Td>
+          <Group gap={8} justify="flex-end">
+            <Tooltip label="Edit Details" position="top" withArrow transitionProps={{ transition: 'pop' }}>
+              <ActionIcon
+                variant="subtle"
+                color="blue"
+                radius="lg"
+                size="lg"
+                onClick={() => {
+                  setAssignEmp(e)
+                  editForm.setValues({
+                    full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+                    department_id: e.department_id || null,
+                    privilege: e.privilege ?? 0,
+                    is_active: Boolean(e.is_active),
+                    card_number: e.card_number || '',
+                    individual_tz_1: e.individual_tz_1 ?? null,
+                    individual_tz_2: e.individual_tz_2 ?? null,
+                    individual_tz_3: e.individual_tz_3 ?? null,
+                  })
+                  fetchExceptions(e.id)
+                  fetchLeaveRequests(e.id)
+                  setAssignOpen(true)
+                }}
+              >
+                <IconEdit size={18} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Reset Password" position="top" withArrow transitionProps={{ transition: 'pop' }}>
+              <ActionIcon
+                variant="subtle"
+                color="orange"
+                radius="lg"
+                size="lg"
+                onClick={() => {
+                  setResetPasswordEmployee(e)
+                  setResetPasswordModal(true)
+                }}
+              >
+                <IconLockOpen size={18} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Table.Td>
+      </Table.Tr>
+    )
+  })
 
   return (
-    <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
-      <Title order={1} mb="md">Employee Management</Title>
-
-      <Paper withBorder shadow="sm" p="md">
-        <Stack gap="md">
-          <TextInput
-            placeholder="Search by name, employee ID, ZK User ID, department, schedule, privilege, or status..."
-            leftSection={<IconSearch size={16} />}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.currentTarget.value)}
-            style={{ maxWidth: 600 }}
-          />
-
-          {searchQuery && (
-            <Text size="sm" c="dimmed">
-              Showing {empSorted.length} of {employees.length} employees
+    <Container size="xl" py="40px">
+      <Stack gap="xl">
+        <Group justify="space-between" align="flex-end">
+          <Box>
+            <Title order={1} fw={900} style={{ letterSpacing: '-1.5px', fontSize: '38px', color: 'var(--mantine-color-blue-9)' }}>
+              Team Directory
+            </Title>
+            <Text c="dimmed" size="md" fw={500} mt={4} style={{ maxWidth: 500 }}>
+              Manage your organization&apos;s workforce, schedules, and access privileges from a centralized high-fidelity interface.
             </Text>
-          )}
+          </Box>
+          <Button
+            variant="gradient"
+            gradient={{ from: 'blue', to: 'cyan', deg: 90 }}
+            radius="xl"
+            size="md"
+            leftSection={<IconSearch size={18} />}
+            onClick={() => {
+              const searchEl = document.getElementById('employee-search-input');
+              if (searchEl) searchEl.focus();
+            }}
+          >
+            Find Employee
+          </Button>
+        </Group>
 
-          <Paper withBorder>
-            <Table striped highlightOnHover withTableBorder withColumnBorders>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('name')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>Employee</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('name')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('zk')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>ZK User ID</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('zk')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('department')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>Department</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('department')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('primary')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>Primary Schedule</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('primary')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('privilege')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>Privilege</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('privilege')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} onClick={() => toggleEmpSort('status')} style={{ cursor: 'pointer' }}>
-                    <Group justify="space-between" gap={6} wrap="nowrap">
-                      <span>Status</span>
-                      <Text c="dimmed" size="xs">{getSortIndicator('status')}</Text>
-                    </Group>
-                  </Table.Th>
-                  <Table.Th fw={600} style={{ width: 120 }}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {empRows}
-                {empLoading && (
-                  <Table.Tr>
-                    <Table.Td colSpan={7}>
-                      <Text c="dimmed">Loading...</Text>
-                    </Table.Td>
+        <Grid gutter="md">
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Total Force</Text>
+                  <Title order={2} fw={900}>{employees.length}</Title>
+                </div>
+                <ThemeIcon size={52} radius="xl" variant="light" color="blue">
+                  <IconUsers size={28} />
+                </ThemeIcon>
+              </Group>
+            </Paper>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Active Members</Text>
+                  <Title order={2} fw={900} c="teal">{employees.filter(e => e.is_active).length}</Title>
+                </div>
+                <ThemeIcon size={52} radius="xl" variant="light" color="teal">
+                  <Box style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: 'var(--mantine-color-teal-filled)', boxShadow: '0 0 10px var(--mantine-color-teal-filled)' }} />
+                </ThemeIcon>
+              </Group>
+            </Paper>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 4 }}>
+            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Departments</Text>
+                  <Title order={2} fw={900}>{new Set(employees.map(e => e.department_id).filter(Boolean)).size}</Title>
+                </div>
+                <ThemeIcon size={52} radius="xl" variant="light" color="orange">
+                  <IconBriefcase size={28} />
+                </ThemeIcon>
+              </Group>
+            </Paper>
+          </Grid.Col>
+        </Grid>
+
+        <Paper
+          shadow="rgba(0, 0, 0, 0.05) 0px 20px 25px -5px, rgba(0, 0, 0, 0.04) 0px 10px 10px -5px"
+          radius="32px"
+          p="32px"
+          style={{
+            border: '1px solid rgba(0,0,0,0.06)',
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            backdropFilter: 'blur(16px)',
+          }}
+        >
+          <Stack gap="xl">
+            <Group justify="space-between" align="center">
+              <TextInput
+                id="employee-search-input"
+                placeholder="Ex: Search by name, ID, or department..."
+                leftSection={<IconSearch size={20} stroke={2} color="var(--mantine-color-blue-filled)" />}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                size="lg"
+                radius="20px"
+                style={{ flex: 1, maxWidth: 600 }}
+                styles={{
+                  input: {
+                    backgroundColor: 'rgba(0,0,0,0.02)',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontWeight: 500,
+                    fontSize: '16px',
+                    '&:focus': {
+                      backgroundColor: '#fff',
+                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.1)',
+                      borderColor: 'var(--mantine-color-blue-filled)',
+                      transform: 'translateY(-2px)'
+                    }
+                  }
+                }}
+              />
+              {searchQuery && (
+                <Badge size="lg" radius="md" variant="light" color="blue" py="md">
+                  Found {empSorted.length} matching professional{empSorted.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </Group>
+
+            <Box style={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.06)' }}>
+              <Table
+                verticalSpacing="lg"
+                horizontalSpacing="xl"
+                highlightOnHover
+                style={{ backgroundColor: '#fff' }}
+              >
+                <Table.Thead>
+                  <Table.Tr style={{ backgroundColor: 'rgba(0,0,0,0.01)' }}>
+                    <Table.Th onClick={() => toggleEmpSort('name')} style={{ cursor: 'pointer', py: '20px' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Member</Text>
+                        {getSortIndicator('name')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th onClick={() => toggleEmpSort('zk')} style={{ cursor: 'pointer' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Device ID</Text>
+                        {getSortIndicator('zk')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th onClick={() => toggleEmpSort('department')} style={{ cursor: 'pointer' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Department</Text>
+                        {getSortIndicator('department')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th onClick={() => toggleEmpSort('primary')} style={{ cursor: 'pointer' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Pattern</Text>
+                        {getSortIndicator('primary')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th onClick={() => toggleEmpSort('privilege')} style={{ cursor: 'pointer' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Perms</Text>
+                        {getSortIndicator('privilege')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th onClick={() => toggleEmpSort('status')} style={{ cursor: 'pointer' }}>
+                      <Group gap={8}>
+                        <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Status</Text>
+                        {getSortIndicator('status')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th style={{ textAlign: 'right' }}>
+                      <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Operations</Text>
+                    </Table.Th>
                   </Table.Tr>
-                )}
-                {!empLoading && (!employees || employees.length === 0) && (
-                  <Table.Tr>
-                    <Table.Td colSpan={7}>
-                      <Text c="dimmed">No employees found</Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-                {!empLoading && employees.length > 0 && empSorted.length === 0 && searchQuery && (
-                  <Table.Tr>
-                    <Table.Td colSpan={7}>
-                      <Text c="dimmed">No employees match your search query</Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Paper>
-        </Stack>
+                </Table.Thead>
+                <Table.Tbody>
+                  {empRows}
+                  {empLoading && (
+                    <Table.Tr>
+                      <Table.Td colSpan={7} ta="center" py="xl">
+                        <Stack align="center" gap="xs">
+                          <Skeleton h={20} w={300} />
+                          <Text size="sm" c="dimmed">Decrypting employee data...</Text>
+                        </Stack>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  {!empLoading && (!employees || employees.length === 0) && (
+                    <Table.Tr>
+                      <Table.Td colSpan={7} ta="center" py="xl">
+                        <Text c="dimmed" fs="italic">No employees found in the database.</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  {!empLoading && employees.length > 0 && empSorted.length === 0 && searchQuery && (
+                    <Table.Tr>
+                      <Table.Td colSpan={7} ta="center" py="xl">
+                        <Text c="dimmed" fs="italic">No employees match "{searchQuery}"</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Box>
+          </Stack>
+        </Paper>
 
         <Modal opened={assignOpen} onClose={() => setAssignOpen(false)} title="Edit Employee">
           <form onSubmit={editForm.onSubmit(async (values) => {
@@ -846,7 +1014,7 @@ export default function EmployeeManagementPage() {
             </Group>
           </Stack>
         </Modal>
-      </Paper>
+      </Stack>
     </Container>
   )
 }

@@ -1,8 +1,12 @@
 'use client'
-import { UnstyledButton, Group, Text, ThemeIcon } from '@mantine/core'
+import { UnstyledButton, Group, Text, ThemeIcon, useMantineTheme, useComputedColorScheme } from '@mantine/core'
 import Link from 'next/link'
 
 export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color = 'blue', collapsed }) {
+    const theme = useMantineTheme();
+    const computedColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
+    const isDark = computedColorScheme === 'dark';
+
     return (
         <UnstyledButton
             component={Link}
@@ -10,43 +14,61 @@ export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color
             onClick={onClick}
             style={{
                 display: 'flex',
+                alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 width: '100%',
-                padding: '8px 8px',
-                borderRadius: '8px',
-                backgroundColor: active ? `var(--mantine-color-${color}-light)` : 'transparent',
-                color: active ? `var(--mantine-color-${color}-9)` : 'var(--mantine-color-dimmed)',
-                transition: 'all 0.2s ease',
+                padding: collapsed ? '10px' : '10px 14px',
+                borderRadius: '12px',
+                backgroundColor: active
+                    ? `var(--mantine-color-${color}-light)`
+                    : 'transparent',
+                color: active
+                    ? `var(--mantine-color-${color}-filled)`
+                    : 'var(--mantine-color-text)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                 marginBottom: '4px',
+                opacity: active ? 1 : 0.8,
+                boxShadow: active ? `0 4px 12px ${isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)'}` : 'none',
             }}
             onMouseEnter={(e) => {
                 if (!active) {
-                    e.currentTarget.style.backgroundColor = 'var(--mantine-color-gray-0)'
-                    e.currentTarget.style.color = 'var(--mantine-color-text)'
+                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                    e.currentTarget.style.opacity = '1'
+                    e.currentTarget.style.transform = 'scale(1.02) translateX(4px)'
                 }
             }}
             onMouseLeave={(e) => {
                 if (!active) {
                     e.currentTarget.style.backgroundColor = 'transparent'
-                    e.currentTarget.style.color = 'var(--mantine-color-dimmed)'
+                    e.currentTarget.style.opacity = '0.8'
+                    e.currentTarget.style.transform = 'scale(1) translateX(0)'
                 }
             }}
         >
-            <Group gap={6} style={{ justifyContent: collapsed ? 'center' : 'flex-start', width: '100%' }}>
+            <Group gap={12} wrap="nowrap" style={{ justifyContent: collapsed ? 'center' : 'flex-start', width: '100%' }}>
                 <ThemeIcon
-                    variant={active ? 'filled' : 'transparent'}
+                    variant={active ? 'light' : 'transparent'}
                     color={active ? color : 'gray'}
                     size="md"
                     radius="md"
                     style={{
                         backgroundColor: active ? undefined : 'transparent',
-                        color: active ? undefined : 'currentColor'
+                        color: active ? undefined : 'currentColor',
+                        transition: 'transform 0.2s ease',
                     }}
                 >
-                    <Icon size={18} stroke={1.5} />
+                    <Icon size={20} stroke={1.5} />
                 </ThemeIcon>
                 {!collapsed && (
-                    <Text size="sm" fw={active ? 600 : 500} truncate>
+                    <Text
+                        size="sm"
+                        fw={active ? 600 : 500}
+                        truncate
+                        style={{
+                            letterSpacing: '0.2px',
+                            flex: 1
+                        }}
+                    >
                         {label}
                     </Text>
                 )}

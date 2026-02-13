@@ -29,67 +29,75 @@ export function UniversalNavbar({
     return (
         <Stack justify="space-between" h="100%" p={0}>
             <Box>
-                {/* Brand Section */}
-                <Box mb="xl" mt="xs" px={0}>
-                    {brand || (
-                        <Group justify="center" style={{ position: 'relative', minHeight: 60 }}>
-                            {/* Logo */}
-                            <img
-                                src="/logo.png"
-                                alt="Company Logo"
-                                style={{
-                                    height: isCollapsed ? '40px' : '60px',
-                                    width: 'auto',
-                                    maxWidth: '100%',
-                                    objectFit: 'contain',
-                                    transition: 'height 0.3s ease'
-                                }}
-                            />
+                {/* Brand Section & Collapse Toggle */}
+                <Box mb="xl" px={4}>
+                    <Group justify="space-between" align="center" wrap="nowrap">
+                        {!isCollapsed && (
+                            <Box style={{ flex: 1 }}>
+                                {brand || (
+                                    <img
+                                        src="/logo.png"
+                                        alt="Company Logo"
+                                        style={{
+                                            height: '42px',
+                                            width: 'auto',
+                                            maxWidth: '180px',
+                                            objectFit: 'contain',
+                                            display: 'block'
+                                        }}
+                                    />
+                                )}
+                            </Box>
+                        )}
 
-                            {/* Collapse Toggle (Desktop Only) */}
-                            {!isCollapsed && toggleCollapse && (
-                                <ActionIcon
-                                    variant="subtle"
-                                    color="gray"
-                                    size="sm"
-                                    onClick={toggleCollapse}
-                                    style={{ position: 'absolute', right: -10, top: '50%', transform: 'translateY(-50%)' }}
-                                >
-                                    <IconChevronLeft size={16} />
-                                </ActionIcon>
-                            )}
-                        </Group>
-                    )}
-                    {isCollapsed && toggleCollapse && (
-                        <Center mt="xs">
-                            <ActionIcon variant="subtle" color="gray" size="sm" onClick={toggleCollapse}>
-                                <IconChevronRight size={16} />
-                            </ActionIcon>
-                        </Center>
-                    )}
+                        <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            size="md"
+                            radius="md"
+                            onClick={toggleCollapse}
+                            style={{
+                                marginLeft: isCollapsed ? 'auto' : 0,
+                                marginRight: isCollapsed ? 'auto' : 0,
+                                transition: 'all 0.3s ease',
+                                backgroundColor: 'rgba(0,0,0,0.03)',
+                            }}
+                        >
+                            {isCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+                        </ActionIcon>
+                    </Group>
                 </Box>
 
-                {/* User Profile Mini-Card */}
+                {/* User Profile Section */}
                 {showProfile && user && (
-                    <Box mb="xl" px={0}>
+                    <Box
+                        mb="xl"
+                        px={isCollapsed ? 0 : 8}
+                        py={8}
+                        style={{
+                            borderRadius: '12px',
+                            backgroundColor: !isCollapsed ? 'rgba(0,0,0,0.02)' : 'transparent',
+                            transition: 'all 0.3s ease',
+                        }}
+                    >
                         {isCollapsed ? (
                             <Tooltip label={`${user.firstName} ${user.lastName}`} position="right" withArrow>
                                 <Center>
-                                    <Avatar src={null} radius="xl" size="md" color="blue">
+                                    <Avatar src={null} radius="xl" size="md" color="blue" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                                         {user.firstName?.[0]}
                                     </Avatar>
                                 </Center>
                             </Tooltip>
                         ) : (
-                            <Group>
-                                <Avatar src={null} radius="xl" size="md" color="blue">
+                            <Group gap="sm" wrap="nowrap">
+                                <Avatar src={null} radius="xl" size="md" color="blue" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                                     {user.firstName?.[0]}
                                 </Avatar>
                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                     <Text size="sm" fw={600} lh={1.2} truncate>
                                         {user.firstName} {user.lastName}
                                     </Text>
-                                    <Text size="xs" c="dimmed" lh={1.2} truncate>
+                                    <Text size="xs" c="dimmed" lh={1.2} truncate style={{ opacity: 0.8 }}>
                                         {user.isAdmin ? 'Administrator' : 'Employee'}
                                     </Text>
                                 </div>
@@ -101,8 +109,17 @@ export function UniversalNavbar({
                 {/* Nav Items */}
                 <Stack gap={4} align={isCollapsed ? "center" : "stretch"}>
                     {!isCollapsed && (
-                        <Text size="xs" c="dimmed" fw={700} px={4} mb={4} tt="uppercase" ls={1}>
-                            Menu
+                        <Text
+                            size="xs"
+                            c="dimmed"
+                            fw={700}
+                            px={12}
+                            mb={8}
+                            tt="uppercase"
+                            ls={1.5}
+                            style={{ opacity: 0.5, fontSize: '10px' }}
+                        >
+                            Main Menu
                         </Text>
                     )}
                     {navItems.map((item) => (
@@ -127,30 +144,63 @@ export function UniversalNavbar({
             </Box>
 
             {/* Bottom Section */}
-            <Stack gap="xs" align={isCollapsed ? "center" : "stretch"}>
+            <Stack gap="sm" align={isCollapsed ? "center" : "stretch"} mt="xl">
                 {bottomActions && (
-                    <Tooltip label="Switch View" position="right" withArrow disabled={!isCollapsed}>
-                        <div>
-                            {React.cloneElement(bottomActions, { collapsed: isCollapsed })}
-                        </div>
-                    </Tooltip>
+                    <Box px={isCollapsed ? 0 : 4}>
+                        {React.cloneElement(bottomActions, { collapsed: isCollapsed })}
+                    </Box>
                 )}
 
-                {(bottomActions) && <Divider width="100%" />}
+                <Divider
+                    width="100%"
+                    label={!isCollapsed ? "System" : null}
+                    labelPosition="center"
+                    variant="dashed"
+                    styles={{ label: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.5 } }}
+                />
 
-                <Group justify={isCollapsed ? "center" : "space-between"} px={0}>
-                    <Tooltip label="Toggle Theme" position="right" withArrow>
-                        <ActionIcon variant="default" size="lg" radius="md" onClick={toggleColorScheme}>
-                            {colorScheme === 'light' ? <IconMoon size={18} /> : <IconSun size={18} />}
-                        </ActionIcon>
-                    </Tooltip>
+                <Box px={isCollapsed ? 0 : 4}>
+                    <Group
+                        justify={isCollapsed ? "center" : "space-between"}
+                        gap="xs"
+                        style={{
+                            backgroundColor: !isCollapsed ? 'rgba(0,0,0,0.02)' : 'transparent',
+                            padding: !isCollapsed ? '8px' : 0,
+                            borderRadius: '12px',
+                        }}
+                    >
+                        <Tooltip label="Toggle Theme" position="right" withArrow>
+                            <ActionIcon
+                                variant="subtle"
+                                color="gray"
+                                size="lg"
+                                radius="md"
+                                onClick={toggleColorScheme}
+                            >
+                                {colorScheme === 'light' ? <IconMoon size={18} /> : <IconSun size={18} />}
+                            </ActionIcon>
+                        </Tooltip>
 
-                    <Tooltip label="Logout" position="right" withArrow>
-                        <ActionIcon variant="light" color="red" size="lg" radius="md" onClick={handleLogout}>
-                            <IconLogout size={18} />
-                        </ActionIcon>
-                    </Tooltip>
-                </Group>
+                        {!isCollapsed && (
+                            <Text size="xs" fw={500} c="dimmed" style={{ flex: 1, textAlign: 'center' }}>
+                                {colorScheme === 'light' ? 'Dark Mode' : 'Light Mode'}
+                            </Text>
+                        )}
+
+                        <Tooltip label="Logout" position="right" withArrow>
+                            <ActionIcon
+                                variant="light"
+                                color="red"
+                                size="lg"
+                                radius="md"
+                                onClick={handleLogout}
+                                style={{ boxShadow: '0 2px 8px rgba(255,0,0,0.1)' }}
+                            >
+                                <IconLogout size={18} />
+                            </ActionIcon>
+                        </Tooltip>
+                    </Group>
+                </Box>
             </Stack>
         </Stack>
     )
