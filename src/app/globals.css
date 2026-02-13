@@ -36,34 +36,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ensure AppShell components adapt - enforce via classes as fallback */
-.app-main {
-  transition: background-color 0.2s ease;
-}
 
-.app-navbar {
-  transition: background-color 0.2s ease;
-}
 
-/* Theme-aware overrides (authoritative) */
-:root[data-mantine-color-scheme="dark"] .app-main {
-  background-color: #1a1b1e !important;
-}
-
-:root[data-mantine-color-scheme="light"] .app-main {
-  background-color: #ffffff !important;
-}
-
-:root[data-mantine-color-scheme="dark"] .app-navbar {
-  background-color: #25262b !important;
-}
-
-:root[data-mantine-color-scheme="light"] .app-navbar {
-  background-color: #ffffff !important;
-}
-
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html,
+body {
   padding: 0;
   margin: 0;
 }

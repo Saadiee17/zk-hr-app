@@ -27,10 +27,10 @@ export function UniversalNavbar({
     }
 
     return (
-        <Stack justify="space-between" h="100%" p={isCollapsed ? 0 : "xs"}>
+        <Stack justify="space-between" h="100%" p={0}>
             <Box>
                 {/* Brand Section */}
-                <Box mb="xl" mt="xs" px={isCollapsed ? 0 : "xs"}>
+                <Box mb="xl" mt="xs" px={0}>
                     {brand || (
                         <Group justify="center" style={{ position: 'relative', minHeight: 60 }}>
                             {/* Logo */}
@@ -71,7 +71,7 @@ export function UniversalNavbar({
 
                 {/* User Profile Mini-Card */}
                 {showProfile && user && (
-                    <Box mb="xl" px={isCollapsed ? 0 : "xs"}>
+                    <Box mb="xl" px={0}>
                         {isCollapsed ? (
                             <Tooltip label={`${user.firstName} ${user.lastName}`} position="right" withArrow>
                                 <Center>
@@ -101,7 +101,7 @@ export function UniversalNavbar({
                 {/* Nav Items */}
                 <Stack gap={4} align={isCollapsed ? "center" : "stretch"}>
                     {!isCollapsed && (
-                        <Text size="xs" c="dimmed" fw={700} px="xs" mb={4} tt="uppercase" ls={1}>
+                        <Text size="xs" c="dimmed" fw={700} px={4} mb={4} tt="uppercase" ls={1}>
                             Menu
                         </Text>
                     )}
@@ -138,7 +138,7 @@ export function UniversalNavbar({
 
                 {(bottomActions) && <Divider width="100%" />}
 
-                <Group justify={isCollapsed ? "center" : "space-between"} px={isCollapsed ? 0 : "xs"}>
+                <Group justify={isCollapsed ? "center" : "space-between"} px={0}>
                     <Tooltip label="Toggle Theme" position="right" withArrow>
                         <ActionIcon variant="default" size="lg" radius="md" onClick={toggleColorScheme}>
                             {colorScheme === 'light' ? <IconMoon size={18} /> : <IconSun size={18} />}

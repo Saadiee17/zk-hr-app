@@ -21,7 +21,9 @@ import {
   Box,
   Tabs,
   TextInput,
-  Indicator
+  Indicator,
+  ThemeIcon,
+  Divider
 } from '@mantine/core'
 import {
   IconRefresh,
@@ -35,7 +37,9 @@ import {
   IconUsers,
   IconHourglassHigh,
   IconBriefcase,
-  IconCalendar
+  IconCalendar,
+  IconSettings,
+  IconFingerprint
 } from '@tabler/icons-react'
 import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
@@ -43,12 +47,12 @@ import { DatePickerInput } from '@mantine/dates'
 import { formatHoursMinutes, toYMD } from '@/utils/attendanceUtils'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
-import { AppShellWrapper } from '@/components/AppShellWrapper'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { UniversalTabs } from '@/components/shared/UniversalTabs'
 import { UniversalTable } from '@/components/shared/UniversalTable'
+import { DepartmentStatusGrid } from '@/components/dashboard/DepartmentStatus'
 
-function Dashboard() {
+function Dashboard({ isCollapsed }) {
   // State for logs table
   const [logs, setLogs] = useState([])
   const [allLogs, setAllLogs] = useState([]) // Store all logs for search filtering
@@ -70,6 +74,8 @@ function Dashboard() {
     onTime: 0,
     totalOvertimeHours: 0,
     totalWorkingHours: 0,
+    averageWorkHours: 0,
+    attendanceRate: 0,
     punchOutMissing: 0
   })
   const [metricsLoading, setLoadingMetrics] = useState(false)
@@ -95,6 +101,7 @@ function Dashboard() {
 
   // State for search and tabs
   const [logsSearchQuery, setLogsSearchQuery] = useState('')
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState('status')
   const [selectedDate, setSelectedDate] = useState(new Date())
 
@@ -499,6 +506,8 @@ function Dashboard() {
         onTime: onTimeCount,
         totalOvertimeHours,
         totalWorkingHours,
+        averageWorkHours: presentCount > 0 ? Math.round((totalWorkingHours / presentCount) * 10) / 10 : 0,
+        attendanceRate: employees.length > 0 ? Math.round((presentCount / employees.length) * 100) : 0,
         punchOutMissing: punchOutMissingCount
       })
       setLateEmployees(lateList)
@@ -538,10 +547,17 @@ function Dashboard() {
 
       // Convert map to sorted array
       const deptArray = Array.from(deptMap.entries())
-        .map(([department, employees]) => ({
-          department,
-          employees: employees.sort((a, b) => a.name.localeCompare(b.name))
-        }))
+        .map(([department, employees]) => {
+          const present = employees.filter(e => ['On-Time', 'Late-In', 'Punch Out Missing'].includes(e.status)).length
+          const late = employees.filter(e => e.status === 'Late-In').length
+          const absent = employees.filter(e => e.status === 'Absent').length
+
+          return {
+            department,
+            employees: employees.sort((a, b) => a.name.localeCompare(b.name)),
+            summary: { present, late, absent, total: employees.length }
+          }
+        })
         .sort((a, b) => a.department.localeCompare(b.department))
 
       setDepartmentEmployees(deptArray)
@@ -721,11 +737,30 @@ function Dashboard() {
         </Table.Td>
         <Table.Td>{coalesce(log.department_name)}</Table.Td>
         <Table.Td>{formatDateTime(log.log_time)}</Table.Td>
-        <Table.Td>{coalesce(log.punch_text)}</Table.Td>
         <Table.Td>{formatDateTime(log.synced_at)}</Table.Td>
       </Table.Tr>
     )
   })
+
+  // Derived filtered department data
+  const filteredDepartmentEmployees = departmentEmployees.map(dept => ({
+    ...dept,
+    employees: dept.employees.filter(emp =>
+      emp.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+      dept.department.toLowerCase().includes(globalSearchQuery.toLowerCase())
+    )
+  })).filter(dept => dept.employees.length > 0)
+
+  // Auto-expand departments when searching
+  useEffect(() => {
+    if (globalSearchQuery.trim()) {
+      const newExpanded = {}
+      filteredDepartmentEmployees.forEach(dept => {
+        newExpanded[dept.department] = true
+      })
+      setExpandedDepartments(newExpanded)
+    }
+  }, [globalSearchQuery])
 
   return (
     <Box
@@ -733,208 +768,273 @@ function Dashboard() {
         minHeight: '100vh',
       }}
     >
-      <Container size="xl" mx="auto" py="md">
+      <Container fluid pt={60} pb="xl" px={24}>
         {/* Header Section */}
         <Stack gap="lg" mb={30}>
           <Group justify="space-between" align="flex-end">
             <div>
-              <Text c="dimmed" size="sm" fw={500} mb={4} tt="uppercase" ls={1}>
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </Text>
-              <Title order={1} style={{ fontWeight: 800, fontSize: '2.5rem', letterSpacing: '-1px', color: '#2d3436' }}>
-                Good Morning, Admin
+              <Group gap="xs" mb={4}>
+                <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
+                  <IconFingerprint size={14} />
+                </ThemeIcon>
+                <Text c="dimmed" size="xs" fw={700} tt="uppercase" ls={1.5}>
+                  Personnel Management System
+                </Text>
+              </Group>
+              <Title order={1} style={{ fontWeight: 900, fontSize: '2.85rem', letterSpacing: '-1.5px', color: '#1a1b1e', lineHeight: 1.1 }}>
+                HR Operations
               </Title>
+              <Text size="sm" c="dimmed" fw={600}>
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </Text>
               {lastSyncTime && (
                 <Group gap={6} mt={4}>
-                  <IconRefresh size={14} className={syncing ? 'mantine-rotate' : ''} style={{ opacity: 0.5 }} />
-                  <Text size="sm" c="dimmed">
-                    Last synced: {formatUTC12HourTime(lastSyncTime.toISOString())}
+                  <Indicator color="green" size={6} processing={syncing} offset={2}>
+                    <IconRefresh size={14} className={syncing ? 'mantine-rotate' : ''} style={{ opacity: 0.6 }} />
+                  </Indicator>
+                  <Text size="xs" fw={600} c="dimmed" tt="uppercase">
+                    Sync: {formatUTC12HourTime(lastSyncTime.toISOString())}
                   </Text>
                 </Group>
               )}
             </div>
-            <Group gap="sm">
-              <DatePickerInput
-                value={selectedDate}
-                onChange={setSelectedDate}
-                maxDate={new Date()}
-                leftSection={<IconCalendar size={16} />}
-                size="md"
-                w={150}
-                clearable={false}
-                styles={{
-                  input: {
-                    fontWeight: 500,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-                  }
-                }}
-              />
+            <Group gap="md">
+              <Paper withBorder p="xs" radius="md" style={{ background: '#f8f9fa', borderStyle: 'dashed' }}>
+                <Group gap="sm">
+                  <DatePickerInput
+                    value={selectedDate}
+                    onChange={setSelectedDate}
+                    maxDate={new Date()}
+                    leftSection={<IconCalendar size={16} />}
+                    variant="unstyled"
+                    size="sm"
+                    w={130}
+                    styles={{ input: { fontWeight: 700, padding: 0, minHeight: 'auto' } }}
+                  />
+                </Group>
+              </Paper>
               <Button
                 onClick={() => handleSync(false)}
                 loading={syncing}
                 leftSection={<IconRefresh size={18} />}
                 size="md"
-                radius="md"
-                color="dark"
+                radius="lg"
+                color="blue"
                 variant="filled"
-                style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                style={{
+                  boxShadow: '0 8px 20px -4px rgba(34, 139, 230, 0.3)',
+                  height: '48px',
+                  paddingLeft: '24px',
+                  paddingRight: '24px'
+                }}
               >
-                Sync Data
+                Sync Device
               </Button>
             </Group>
           </Group>
         </Stack>
 
-        {/* Bento Grid Layout */}
-        <Grid gutter="lg" mb={30}>
-          {/* Primary Stats Row */}
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <MetricCard
-              value={metrics.present}
-              label="Present"
-              description="Checked in today"
-              color="blue"
-              icon={IconUserCheck}
-              clickable
-              onClick={() => setPresentModalOpen(true)}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <MetricCard
-              value={metrics.onTime}
-              label="On Time"
-              description="Arrived on schedule"
-              color="teal"
-              icon={IconClock}
-              clickable
-              onClick={() => setOnTimeModalOpen(true)}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <MetricCard
-              value={metrics.late}
-              label="Late In"
-              description="Arrived after start time"
-              color="orange"
-              icon={IconAlertCircle}
-              clickable
-              onClick={() => setLateModalOpen(true)}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <MetricCard
-              value={metrics.absent}
-              label="Absent"
-              description="Not checked in"
-              color="red"
-              icon={IconUserX}
-              clickable
-              onClick={() => setAbsentModalOpen(true)}
-            />
-          </Grid.Col>
-
-          {/* Secondary Stats Row - Bento Style */}
+        {/* Attendance Intelligence Grid */}
+        <Grid gutter="xl" mb={40}>
+          {/* Main Attendance Pulse */}
           <Grid.Col span={{ base: 12, md: 8 }}>
-            <Card
-              padding="lg"
-              radius="lg"
-              style={{
-                height: '100%',
-                background: 'rgba(255, 255, 255, 0.7)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.05)'
-              }}
-            >
-              <Group justify="space-between" mb="md">
-                <Title order={4}>Quick Actions</Title>
-                <IconBriefcase size={20} color="gray" />
-              </Group>
-              <Grid>
-                <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="blue" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} component={Link} href="/employees/manage">
-                    <IconUsers size={24} />
-                    Manage Employees
-                  </Button>
-                </Grid.Col>
-                <Grid.Col span={4}>
-                  <Button fullWidth variant="light" color="violet" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} component={Link} href="/device-config">
-                    <IconCalendar size={24} />
-                    View Schedule
-                  </Button>
-                </Grid.Col>
-                <Grid.Col span={4}>
-                  <Indicator label={pendingLeaves.length} color="red" size={20} disabled={pendingLeaves.length === 0} offset={7} withBorder processing>
-                    <Button fullWidth variant="light" color="orange" h={80} style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={() => setAlertsModalOpen(true)}>
-                      <IconAlertCircle size={24} />
-                      Review Alerts
-                    </Button>
-                  </Indicator>
-                </Grid.Col>
-              </Grid>
-            </Card>
+            <Paper withBorder p="xl" radius="lg" style={{
+              background: 'white',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
+              height: '100%',
+              border: '1px solid #eee'
+            }}>
+              <Stack gap="xl">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Title order={3} fw={850} style={{ letterSpacing: '-0.5px' }}>Daily Attendance Pulse</Title>
+                    <Text size="sm" c="dimmed">Real-time status tracking and punctuality health</Text>
+                  </div>
+                  <Badge size="lg" radius="sm" variant="filled" color={metrics.attendanceRate > 85 ? 'teal' : 'orange'}>
+                    {metrics.attendanceRate}% Staffing Rate
+                  </Badge>
+                </Group>
+
+                <Grid grow>
+                  <Grid.Col span={{ base: 6, sm: 3 }}>
+                    <MetricCard
+                      value={metrics.present}
+                      label="Present"
+                      description="Active now"
+                      color="blue"
+                      icon={IconUserCheck}
+                      clickable
+                      onClick={() => setPresentModalOpen(true)}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 6, sm: 3 }}>
+                    <MetricCard
+                      value={metrics.onTime}
+                      label="On-Time"
+                      description="Met schedule"
+                      color="teal"
+                      icon={IconClock}
+                      clickable
+                      onClick={() => setOnTimeModalOpen(true)}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 6, sm: 3 }}>
+                    <MetricCard
+                      value={metrics.late}
+                      label="Delayed"
+                      description="Arrived late"
+                      color="orange"
+                      icon={IconAlertCircle}
+                      clickable
+                      onClick={() => setLateModalOpen(true)}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 6, sm: 3 }}>
+                    <MetricCard
+                      value={metrics.absent}
+                      label="Absent"
+                      description="No record"
+                      color="red"
+                      icon={IconUserX}
+                      clickable
+                      onClick={() => setAbsentModalOpen(true)}
+                    />
+                  </Grid.Col>
+                </Grid>
+
+                <Divider style={{ opacity: 0.6 }} />
+
+                <Grid gutter="xl">
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <Group gap="md" align="center">
+                      <ThemeIcon size={54} radius="md" color="violet" variant="light">
+                        <IconBriefcase size={30} />
+                      </ThemeIcon>
+                      <div>
+                        <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={0.5}>Avg Shift Today</Text>
+                        <Group gap={6} align="baseline">
+                          <Text size="xl" fw={900} style={{ fontSize: '1.75rem' }}>{metrics.averageWorkHours}</Text>
+                          <Text size="xs" fw={700} c="dimmed">HOURS / EMP</Text>
+                        </Group>
+                      </div>
+                    </Group>
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <Group gap="md" align="center">
+                      <ThemeIcon size={54} radius="md" color="pink" variant="light">
+                        <IconHourglassHigh size={30} />
+                      </ThemeIcon>
+                      <div>
+                        <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={0.5}>System Overtime</Text>
+                        <Group gap={6} align="baseline">
+                          <Text size="xl" fw={900} style={{ fontSize: '1.75rem' }}>{formatHoursMinutes(metrics.totalOvertimeHours)}</Text>
+                          <Text size="xs" fw={700} c="dimmed">AGGREGATED</Text>
+                        </Group>
+                      </div>
+                    </Group>
+                  </Grid.Col>
+                </Grid>
+              </Stack>
+            </Paper>
           </Grid.Col>
 
+          {/* Management Shortcuts */}
           <Grid.Col span={{ base: 12, md: 4 }}>
-            <Stack gap="lg">
-              <MetricCard
-                value={totalEmployees}
-                label="Total Workforce"
-                color="indigo"
-                icon={IconUsers}
-                size="md"
-              />
-              <Group grow>
-                <MetricCard
-                  value={formatHoursMinutes(metrics.totalWorkingHours || 0)}
-                  label="Work Hrs"
-                  color="grape"
-                  icon={IconBriefcase}
-                  size="sm"
-                />
-                <MetricCard
-                  value={formatHoursMinutes(metrics.totalOvertimeHours || 0)}
-                  label="Overtime"
-                  color="pink"
-                  icon={IconHourglassHigh}
-                  size="sm"
-                />
-              </Group>
-            </Stack>
-          </Grid.Col>
+            <Stack gap="lg" h="100%">
+              <Card withBorder padding="xl" radius="lg" style={{
+                flex: 1,
+                border: '1px solid #eee',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)'
+              }}>
+                <Stack gap="xl">
+                  <Group justify="space-between">
+                    <div>
+                      <Title order={4} fw={800}>Management</Title>
+                      <Text size="xs" c="dimmed">Quick access tools</Text>
+                    </div>
+                    <ThemeIcon color="gray" variant="subtle">
+                      <IconSettings size={18} />
+                    </ThemeIcon>
+                  </Group>
 
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <MetricCard
-              value={metrics.punchOutMissing || 0}
-              label="Missing Out"
-              description="Forgot to clock out"
-              color="yellow"
-              icon={IconAlertCircle}
-              clickable
-              onClick={() => setPunchOutMissingModalOpen(true)}
-            />
+                  <Stack gap="sm">
+                    <Button
+                      fullWidth
+                      variant="white"
+                      color="blue"
+                      size="md"
+                      radius="md"
+                      leftSection={<ThemeIcon size={24} radius="sm" color="blue" variant="light"><IconUsers size={14} /></ThemeIcon>}
+                      component={Link}
+                      href="/employees/manage"
+                      styles={{
+                        root: { border: '1px solid #eef2f6', height: '52px' },
+                        inner: { justifyContent: 'flex-start' },
+                        label: { fontSize: '15px', fontWeight: 600 }
+                      }}
+                    >
+                      Employee Directory
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant="white"
+                      color="violet"
+                      size="md"
+                      radius="md"
+                      leftSection={<ThemeIcon size={24} radius="sm" color="violet" variant="light"><IconCalendar size={14} /></ThemeIcon>}
+                      component={Link}
+                      href="/device-config"
+                      styles={{
+                        root: { border: '1px solid #eef2f6', height: '52px' },
+                        inner: { justifyContent: 'flex-start' },
+                        label: { fontSize: '15px', fontWeight: 600 }
+                      }}
+                    >
+                      Shift Calendars
+                    </Button>
+                    <Indicator label={pendingLeaves.length} color="red" size={20} disabled={pendingLeaves.length === 0} offset={2} withBorder processing>
+                      <Button
+                        fullWidth
+                        variant="white"
+                        color="orange"
+                        size="md"
+                        radius="md"
+                        leftSection={<ThemeIcon size={24} radius="sm" color="orange" variant="light"><IconAlertCircle size={14} /></ThemeIcon>}
+                        onClick={() => setAlertsModalOpen(true)}
+                        styles={{
+                          root: { border: '1px solid #eef2f6', height: '52px' },
+                          inner: { justifyContent: 'flex-start' },
+                          label: { fontSize: '15px', fontWeight: 600 }
+                        }}
+                      >
+                        Pending Requests
+                      </Button>
+                    </Indicator>
+                  </Stack>
+
+                  <Divider label={<Text size="xs" fw={700} c="dimmed">SUMMARY</Text>} labelPosition="center" />
+
+                  <Grid gutter="sm">
+                    <Grid.Col span={6}>
+                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'white' }}>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>Workforce</Text>
+                        <Text size="xl" fw={900} c="indigo">{totalEmployees}</Text>
+                      </Paper>
+                    </Grid.Col>
+                    <Grid.Col span={6}>
+                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'white', cursor: 'pointer' }} onClick={() => setPunchOutMissingModalOpen(true)}>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>Missed Out</Text>
+                        <Text size="xl" fw={900} c="yellow">{metrics.punchOutMissing}</Text>
+                      </Paper>
+                    </Grid.Col>
+                  </Grid>
+                </Stack>
+              </Card>
+            </Stack>
           </Grid.Col>
         </Grid>
 
 
-        {/* Refresh Controls - Compact */}
-        <Paper withBorder p="sm" radius="lg" style={{ background: 'var(--mantine-color-gray-0)' }}>
-          <Group justify="space-between" align="center">
-            <Group gap="xs">
-              <Text size="sm" fw={500} c="dimmed">Auto-refresh: Every 2 minutes</Text>
-              <Badge size="sm" variant="dot" color="green">Active</Badge>
-            </Group>
-            <Button
-              onClick={() => fetchMetrics(false)}
-              loading={metricsLoading}
-              leftSection={<IconRefresh size={14} />}
-              variant="light"
-              size="xs"
-            >
-              Refresh Now
-            </Button>
-          </Group>
-        </Paper>
 
         {/* Tabs for Status by Department and Attendance Logs */}
         <UniversalTabs value={activeTab} onChange={setActiveTab}>
@@ -943,106 +1043,56 @@ function Dashboard() {
             <UniversalTabs.Tab value="logs">Recent Attendance Logs</UniversalTabs.Tab>
           </UniversalTabs.List>
 
-          <UniversalTabs.Panel value="status" pt="md">
-            <Paper withBorder p="md" radius="lg">
-              <Stack gap="md">
+          <UniversalTabs.Panel value="status" pt="xl">
+            <Stack gap="lg">
+              <Group justify="space-between" align="center" mb="xs">
                 <div>
-                  <Title order={3} mb={4}>Employee Status by Department</Title>
-                  <Text size="sm" c="dimmed">Real-time attendance overview (same calculation as badges above ✅)</Text>
+                  <Text fw={800} size="lg">Departmental Overview</Text>
+                  <Text size="xs" c="dimmed" fw={500}>Live status of personnel across all units</Text>
                 </div>
+                <TextInput
+                  placeholder="Seach personnel or unit..."
+                  leftSection={<IconSearch size={14} />}
+                  value={globalSearchQuery}
+                  onChange={(e) => setGlobalSearchQuery(e.currentTarget.value)}
+                  size="xs"
+                  radius="md"
+                  w={280}
+                  styles={{
+                    input: {
+                      backgroundColor: 'white',
+                      border: '1px solid #eee',
+                      fontWeight: 600
+                    }
+                  }}
+                />
+              </Group>
 
+              <Stack gap="lg">
                 {metricsLoading ? (
-                  <Text c="dimmed" ta="center" py="md">Loading employee status...</Text>
-                ) : departmentEmployees.length === 0 ? (
-                  <Text c="dimmed" ta="center" py="md">No employee data available</Text>
+                  <Paper withBorder p="xl" radius="lg" ta="center">
+                    <Stack align="center" gap="sm">
+                      <IconRefresh size={32} className="mantine-rotate" color="gray" />
+                      <Text c="dimmed" fw={500}>Updating employee status records...</Text>
+                    </Stack>
+                  </Paper>
+                ) : filteredDepartmentEmployees.length === 0 ? (
+                  <Paper withBorder p="xl" radius="lg" ta="center">
+                    <Stack align="center" gap="xs">
+                      <IconUserX size={40} color="var(--mantine-color-gray-4)" />
+                      <Text c="dimmed" fw={600}>No personnel found matching &quot;{globalSearchQuery}&quot;</Text>
+                      <Button variant="subtle" size="xs" onClick={() => setGlobalSearchQuery('')}>Clear search</Button>
+                    </Stack>
+                  </Paper>
                 ) : (
-                  <Stack gap="sm">
-                    {departmentEmployees.map((dept) => (
-                      <Card key={dept.department} withBorder radius="md">
-                        <Group
-                          justify="space-between"
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => {
-                            setExpandedDepartments(prev => ({
-                              ...prev,
-                              [dept.department]: !prev[dept.department]
-                            }))
-                          }}
-                        >
-                          <div>
-                            <Text fw={600} size="lg">{dept.department}</Text>
-                            <Text size="sm" c="dimmed">{dept.employees.length} employees</Text>
-                          </div>
-                          <ActionIcon variant="subtle" size="lg">
-                            {expandedDepartments[dept.department] ?
-                              <IconChevronUp size={20} /> :
-                              <IconChevronDown size={20} />
-                            }
-                          </ActionIcon>
-                        </Group>
-
-                        <Collapse in={expandedDepartments[dept.department]}>
-                          <div style={{ marginTop: '1rem' }}>
-                            <UniversalTable style={{ tableLayout: 'fixed', width: '100%' }}>
-                              <colgroup>
-                                <col style={{ width: '25%' }} />
-                                <col style={{ width: '25%' }} />
-                                <col style={{ width: '20%' }} />
-                                <col style={{ width: '30%' }} />
-                              </colgroup>
-                              <UniversalTable.Thead>
-                                <Table.Tr>
-                                  <Table.Th>Name</Table.Th>
-                                  <Table.Th>Schedule</Table.Th>
-                                  <Table.Th>Status</Table.Th>
-                                  <Table.Th>Login Time</Table.Th>
-                                </Table.Tr>
-                              </UniversalTable.Thead>
-                              <UniversalTable.Tbody>
-                                {dept.employees.map((emp) => {
-                                  let badgeColor = 'gray'
-                                  if (emp.status === 'On-Time') badgeColor = 'green'
-                                  else if (emp.status === 'Late-In') badgeColor = 'orange'
-                                  else if (emp.status === 'Absent') badgeColor = 'red'
-                                  else if (emp.status === 'Shift Not Started') badgeColor = 'blue'
-                                  else if (emp.status === 'Punch Out Missing') badgeColor = 'yellow'
-                                  else if (emp.status === 'Out of Schedule') badgeColor = 'grape'
-
-                                  return (
-                                    <Table.Tr key={emp.id}>
-                                      <Table.Td>
-                                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                                          <Text component="span" className="employee-name-link">
-                                            {emp.name}
-                                          </Text>
-                                        </Link>
-                                      </Table.Td>
-                                      <Table.Td>
-                                        <Text size="sm">{emp.schedule}</Text>
-                                      </Table.Td>
-                                      <Table.Td>
-                                        <Badge color={badgeColor} variant="light">
-                                          {emp.status}
-                                        </Badge>
-                                      </Table.Td>
-                                      <Table.Td>
-                                        <Text size="sm">
-                                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'No punch'}
-                                        </Text>
-                                      </Table.Td>
-                                    </Table.Tr>
-                                  )
-                                })}
-                              </UniversalTable.Tbody>
-                            </UniversalTable>
-                          </div>
-                        </Collapse>
-                      </Card>
-                    ))}
-                  </Stack>
+                  <DepartmentStatusGrid
+                    departmentData={filteredDepartmentEmployees}
+                    expandedDepartments={expandedDepartments}
+                    setExpandedDepartments={setExpandedDepartments}
+                  />
                 )}
               </Stack>
-            </Paper>
+            </Stack>
           </UniversalTabs.Panel>
 
           {/* Modals for Late, Absent, and On-Time Employees */}
@@ -1307,70 +1357,123 @@ function Dashboard() {
             )}
           </Modal>
 
-          <UniversalTabs.Panel value="logs" pt="md">
-            <Paper withBorder radius="lg" p="md">
-              <Stack gap="md">
-                <div>
-                  <Title order={3} mb={4}>Recent Attendance Logs</Title>
-                  <TextInput
-                    placeholder="Search by employee name, ZK User ID, department, punch status, time, etc..."
-                    leftSection={<IconSearch size={16} />}
-                    value={logsSearchQuery}
-                    onChange={(e) => setLogsSearchQuery(e.currentTarget.value)}
-                    mb="md"
-                  />
+          <UniversalTabs.Panel value="logs" pt="xl">
+            <Stack gap="lg">
+              <Paper withBorder p="xl" radius="lg" style={{ background: 'white' }}>
+                <Stack gap="xl">
+                  <Group justify="space-between" align="center">
+                    <div>
+                      <Title order={3} fw={850} style={{ letterSpacing: '-0.5px' }}>Raw Attendance Data</Title>
+                      <Text size="sm" c="dimmed">Sequential log of all biometric terminal events</Text>
+                    </div>
+                    <Group gap="sm">
+                      <TextInput
+                        placeholder="Filter by name, ID, or status..."
+                        leftSection={<IconSearch size={18} stroke={1.5} />}
+                        value={logsSearchQuery}
+                        onChange={(e) => setLogsSearchQuery(e.currentTarget.value)}
+                        size="md"
+                        radius="md"
+                        w={350}
+                        styles={{ input: { background: '#f8f9fa' } }}
+                      />
+                    </Group>
+                  </Group>
+
                   {logsSearchQuery && (
-                    <Text size="sm" c="dimmed" mb="md">
-                      Showing {filteredLogs.length} of {logs.length} logs
+                    <Text size="xs" fw={700} c="blue" tt="uppercase" ls={1}>
+                      Filtered View: Found {filteredLogs.length} entries matching &quot;{logsSearchQuery}&quot;
                     </Text>
                   )}
-                </div>
 
-                <LoadingOverlay visible={loading} />
-                <UniversalTable>
-                  <UniversalTable.Thead>
-                    <Table.Tr>
-                      <Table.Th>ZK User ID</Table.Th>
-                      <Table.Th>Employee</Table.Th>
-                      <Table.Th>Department</Table.Th>
-                      <Table.Th>Log Time</Table.Th>
-                      <Table.Th>Punch Status</Table.Th>
-                      <Table.Th>Synced At</Table.Th>
-                    </Table.Tr>
-                  </UniversalTable.Thead>
-                  <UniversalTable.Tbody>
-                    {rows.length === 0 ? (
-                      <Table.Tr>
-                        <Table.Td colSpan={6}>
-                          <Text c="dimmed" ta="center" py="md">
-                            {logsSearchQuery ? 'No logs match your search' : 'No logs available'}
-                          </Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    ) : (
-                      rows
-                    )}
-                  </UniversalTable.Tbody>
-                </UniversalTable>
+                  <Box style={{ position: 'relative' }}>
+                    <LoadingOverlay visible={loading} overlayProps={{ blur: 2 }} zIndex={10} />
+                    <UniversalTable>
+                      <UniversalTable.Thead>
+                        <Table.Tr>
+                          <Table.Th>Ref ID</Table.Th>
+                          <Table.Th>Personnel</Table.Th>
+                          <Table.Th>Unit</Table.Th>
+                          <Table.Th>Event Time</Table.Th>
+                          <Table.Th>Action</Table.Th>
+                          <Table.Th>Sync Hash</Table.Th>
+                        </Table.Tr>
+                      </UniversalTable.Thead>
+                      <UniversalTable.Tbody>
+                        {rows.length === 0 ? (
+                          <Table.Tr>
+                            <Table.Td colSpan={6}>
+                              <Stack align="center" py="xl" gap="xs">
+                                <Text fw={600} c="dimmed">No log data found</Text>
+                                <Text size="xs" c="dimmed">Try adjusting your filters or syncing the device.</Text>
+                              </Stack>
+                            </Table.Td>
+                          </Table.Tr>
+                        ) : (
+                          paginatedFilteredLogs.map((log) => {
+                            const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
+                            const employeeName = getEmployeeName(log.employees)
+                            const initials = employeeName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 
-                {/* Pagination */}
-                <Group justify="center" mt="xl">
-                  <Pagination
-                    total={logsSearchQuery.trim() ? filteredTotalPages : totalPages}
-                    value={currentPage}
-                    onChange={(p) => {
-                      setCurrentPage(p)
-                      // Only fetch from server if not searching (client-side pagination when searching)
-                      if (!logsSearchQuery.trim()) {
-                        fetchLogs(p, logsPerPage, false)
-                      }
-                    }}
-                  />
-                </Group>
-              </Stack>
-            </Paper>
+                            return (
+                              <Table.Tr key={log.id}>
+                                <Table.Td><Text size="xs" ff="monospace" c="dimmed">{log.zk_user_id}</Text></Table.Td>
+                                <Table.Td>
+                                  <Group gap="sm">
+                                    <ThemeIcon size={28} radius="xl" variant="light" color="indigo">
+                                      <Text size="xs" fw={700}>{initials}</Text>
+                                    </ThemeIcon>
+                                    <Link href={employee?.id ? `/employees/${employee.id}` : '#'} style={{ color: 'inherit', textDecoration: 'none' }}>
+                                      <Text fw={600} size="sm" className="employee-name-link">
+                                        {employeeName}
+                                      </Text>
+                                    </Link>
+                                  </Group>
+                                </Table.Td>
+                                <Table.Td><Text size="sm" fw={500}>{coalesce(log.department_name)}</Text></Table.Td>
+                                <Table.Td><Text size="sm" fw={600} ff="monospace">{formatDateTime(log.log_time)}</Text></Table.Td>
+                                <Table.Td>
+                                  <Badge
+                                    variant="outline"
+                                    radius="sm"
+                                    color={log.punch_text?.toLowerCase().includes('in') ? 'blue' : 'gray'}
+                                    size="sm"
+                                    fw={700}
+                                  >
+                                    {coalesce(log.punch_text)}
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td><Text size="xs" c="dimmed" ff="monospace">{formatDateTime(log.synced_at)}</Text></Table.Td>
+                              </Table.Tr>
+                            )
+                          })
+                        )}
+                      </UniversalTable.Tbody>
+                    </UniversalTable>
+                  </Box>
+
+                  <Group justify="space-between" mt="xl">
+                    <Text size="xs" c="dimmed" fw={500}>
+                      Showing page {currentPage} of {logsSearchQuery.trim() ? filteredTotalPages : totalPages}
+                    </Text>
+                    <Pagination
+                      total={logsSearchQuery.trim() ? filteredTotalPages : totalPages}
+                      value={currentPage}
+                      onChange={(p) => {
+                        setCurrentPage(p)
+                        if (!logsSearchQuery.trim()) {
+                          fetchLogs(p, logsPerPage, false)
+                        }
+                      }}
+                      radius="md"
+                      size="sm"
+                    />
+                  </Group>
+                </Stack>
+              </Paper>
+            </Stack>
           </UniversalTabs.Panel>
-        </UniversalTabs>
+        </UniversalTabs >
 
         {/* Punch Out Missing Modal */}
         <Modal
@@ -1385,56 +1488,58 @@ function Dashboard() {
             content: { maxWidth: '1000px' }
           }}
         >
-          {punchOutMissingEmployees.length === 0 ? (
-            <Text c="dimmed" ta="center" py="xl" size="lg">No employees with missing punch out</Text>
-          ) : (
-            <Table
-              striped
-              highlightOnHover
-              withTableBorder
-              withColumnBorders={false}
-            >
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
-                  <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
-                  <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
-                  <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {punchOutMissingEmployees.map((emp) => (
-                  <Table.Tr key={emp.id}>
-                    <Table.Td>
-                      <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                        <Text component="span" className="employee-name-link" fw={500}>
-                          {emp.name}
-                        </Text>
-                      </Link>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{emp.department}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{emp.schedule}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" ff="monospace">
-                        {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
-                      </Text>
-                    </Table.Td>
+          {
+            punchOutMissingEmployees.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl" size="lg">No employees with missing punch out</Text>
+            ) : (
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                withColumnBorders={false}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ minWidth: '150px' }}>Name</Table.Th>
+                    <Table.Th style={{ minWidth: '120px' }}>Department</Table.Th>
+                    <Table.Th style={{ minWidth: '100px' }}>Schedule</Table.Th>
+                    <Table.Th style={{ minWidth: '130px', whiteSpace: 'nowrap' }}>Check-In Time</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
-        </Modal>
+                </Table.Thead>
+                <Table.Tbody>
+                  {punchOutMissingEmployees.map((emp) => (
+                    <Table.Tr key={emp.id}>
+                      <Table.Td>
+                        <Link href={`/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          <Text component="span" className="employee-name-link" fw={500}>
+                            {emp.name}
+                          </Text>
+                        </Link>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.department}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{emp.schedule}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" ff="monospace">
+                          {emp.inTime ? formatUTC12HourTime(emp.inTime) : 'N/A'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )
+          }
+        </Modal >
 
         {/* Alerts Modal */}
-        <Modal
+        < Modal
           opened={alertsModalOpen}
           onClose={() => setAlertsModalOpen(false)}
-          title={<Text fw={600} size="lg">Pending Alerts</Text>}
+          title={< Text fw={600} size="lg" > Pending Alerts</Text >}
           size="lg"
           styles={{
             body: { padding: 'var(--mantine-spacing-lg)' },
@@ -1485,18 +1590,16 @@ function Dashboard() {
               </Stack>
             )}
           </Stack>
-        </Modal>
-      </Container>
-    </Box>
+        </Modal >
+      </Container >
+    </Box >
   )
 }
 
 export default function Home() {
   return (
     <ThemeProvider>
-      <AppShellWrapper>
-        <Dashboard />
-      </AppShellWrapper>
+      <Dashboard />
     </ThemeProvider>
   )
 }

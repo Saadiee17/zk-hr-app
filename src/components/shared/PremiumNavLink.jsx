@@ -12,7 +12,7 @@ export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color
                 display: 'flex',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 width: '100%',
-                padding: '10px 12px',
+                padding: '8px 8px',
                 borderRadius: '8px',
                 backgroundColor: active ? `var(--mantine-color-${color}-light)` : 'transparent',
                 color: active ? `var(--mantine-color-${color}-9)` : 'var(--mantine-color-dimmed)',
@@ -32,7 +32,7 @@ export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color
                 }
             }}
         >
-            <Group gap="sm" style={{ justifyContent: collapsed ? 'center' : 'flex-start', width: '100%' }}>
+            <Group gap={6} style={{ justifyContent: collapsed ? 'center' : 'flex-start', width: '100%' }}>
                 <ThemeIcon
                     variant={active ? 'filled' : 'transparent'}
                     color={active ? color : 'gray'}
