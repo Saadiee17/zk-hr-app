@@ -175,34 +175,36 @@ function Dashboard({ isCollapsed }) {
     }
   }
 
-  // Sync data from Python Bridge
+  // Refresh data from Supabase (clears reports cache)
   const handleSync = useCallback(async (silent = false) => {
-    // Prevent multiple simultaneous syncs
+    // Prevent multiple simultaneous refreshes
     if (syncingRef.current) {
       return
     }
 
+    let notificationId = null
     try {
       syncingRef.current = true
       setSyncing(true)
 
-      const notificationId = !silent ? showLoading('Fetching attendance from device...', 'Syncing data', { id: 'syncing' }) : null
+      if (!silent) {
+        notificationId = showLoading('Refreshing dashboard data...', 'Update In Progress', { id: 'refreshing' })
+      }
 
-      const response = await fetch('/api/sync', { method: 'POST' })
+      const response = await fetch('/api/sync?refresh_only=true', { method: 'GET' })
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(result.error || 'Sync failed')
+        throw new Error(result.error || 'Refresh failed')
       }
 
       setLastSyncTime(new Date())
 
       if (!silent && notificationId) {
-        updateNotification('syncing', result.message || 'Data synced successfully', 'Success', 'success', { autoClose: 2000 })
+        updateNotification('refreshing', result.message || 'Data updated successfully', 'Success', 'success', { autoClose: 2000 })
       }
 
-      // Refresh logs after successful sync
-      // If searching, refresh all logs; otherwise refresh current page
+      // Refresh logs and metrics
       if (logsSearchQuery.trim() && allLogs.length > 0) {
         await fetchLogs(1, logsPerPage, true)
       } else {
@@ -210,9 +212,9 @@ function Dashboard({ isCollapsed }) {
       }
       await fetchMetrics()
     } catch (error) {
-      console.error('[Sync] Error:', error)
+      console.error('[Refresh] Error:', error)
       if (!silent && notificationId) {
-        updateNotification('syncing', error.message || 'Failed to sync data', 'Sync Error', 'error', { autoClose: 4000 })
+        updateNotification('refreshing', error.message || 'Failed to refresh data', 'Update Error', 'error', { autoClose: 4000 })
       }
     } finally {
       setSyncing(false)
@@ -400,17 +402,33 @@ function Dashboard({ isCollapsed }) {
         const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
 
         // ✅ Use API status directly - no duplicate calculation logic!
-        if (status === 'On-Time') {
+        const isActuallyPresent = ['On-Time', 'Late-In', 'Punch Out Missing', 'Present', 'Worked on Day Off', 'Out of Schedule'].includes(status)
+
+        if (isActuallyPresent) {
           presentCount++
-          onTimeCount++
-          onTimeList.push({
-            id: e.id,
-            name: employeeName,
-            department: departmentName,
-            schedule: scheduleInfo,
-            inTime: r?.inTime,
-            outTime: r?.outTime
-          })
+
+          if (status === 'On-Time') {
+            onTimeCount++
+            onTimeList.push({
+              id: e.id,
+              name: employeeName,
+              department: departmentName,
+              schedule: scheduleInfo,
+              inTime: r?.inTime,
+              outTime: r?.outTime
+            })
+          } else if (status === 'Late-In') {
+            lateCount++
+            lateList.push({
+              id: e.id,
+              name: employeeName,
+              department: departmentName,
+              schedule: scheduleInfo,
+              inTime: r?.inTime,
+              outTime: r?.outTime
+            })
+          }
+
           presentList.push({
             id: e.id,
             name: employeeName,
@@ -418,38 +436,7 @@ function Dashboard({ isCollapsed }) {
             schedule: scheduleInfo,
             inTime: r?.inTime,
             outTime: r?.outTime,
-            status: 'On-Time'
-          })
-        } else if (status === 'Late-In') {
-          presentCount++
-          lateCount++
-          lateList.push({
-            id: e.id,
-            name: employeeName,
-            department: departmentName,
-            schedule: scheduleInfo,
-            inTime: r?.inTime,
-            outTime: r?.outTime
-          })
-          presentList.push({
-            id: e.id,
-            name: employeeName,
-            department: departmentName,
-            schedule: scheduleInfo,
-            inTime: r?.inTime,
-            outTime: r?.outTime,
-            status: 'Late-In'
-          })
-        } else if (status === 'Punch Out Missing') {
-          presentCount++ // Still working
-          presentList.push({
-            id: e.id,
-            name: employeeName,
-            department: departmentName,
-            schedule: scheduleInfo,
-            inTime: r?.inTime,
-            outTime: null,
-            status: 'Punch Out Missing'
+            status: status
           })
         } else if (status === 'Absent') {
           absentCount++
@@ -552,7 +539,7 @@ function Dashboard({ isCollapsed }) {
       // Convert map to sorted array
       const deptArray = Array.from(deptMap.entries())
         .map(([department, employees]) => {
-          const present = employees.filter(e => ['On-Time', 'Late-In', 'Punch Out Missing'].includes(e.status)).length
+          const present = employees.filter(e => ['On-Time', 'Late-In', 'Punch Out Missing', 'Present', 'Worked on Day Off', 'Out of Schedule'].includes(e.status)).length
           const late = employees.filter(e => e.status === 'Late-In').length
           const absent = employees.filter(e => e.status === 'Absent').length
 
@@ -832,7 +819,7 @@ function Dashboard({ isCollapsed }) {
                   paddingRight: '24px'
                 }}
               >
-                Sync Device
+                Sync Data
               </Button>
             </Group>
           </Group>
@@ -1222,8 +1209,9 @@ function Dashboard({ isCollapsed }) {
                                     size="xs"
                                     variant="filled"
                                     color={
-                                      emp.status === 'On-Time' ? 'teal.7' :
-                                        emp.status === 'Late-In' ? 'orange.8' : 'gray.6'
+                                      emp.status === 'On-Time' || emp.status === 'Present' || emp.status === 'Worked on Day Off' ? 'teal.7' :
+                                        emp.status === 'Late-In' ? 'orange.8' :
+                                          emp.status === 'Punch Out Missing' ? 'yellow.8' : 'gray.6'
                                     }
                                     radius="sm"
                                   >

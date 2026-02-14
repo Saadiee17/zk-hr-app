@@ -41,6 +41,12 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
         switch (status) {
             case 'On-Time':
                 return { color: 'teal', icon: <IconUserCheck size={14} />, label: 'Active: On-Time' }
+            case 'Present':
+                return { color: 'teal', icon: <IconUserCheck size={14} />, label: 'Active: Present' }
+            case 'Worked on Day Off':
+                return { color: 'indigo', icon: <IconBriefcase size={14} />, label: 'Day Off Work' }
+            case 'Out of Schedule':
+                return { color: 'violet', icon: <IconAlertCircle size={14} />, label: 'Out of Schedule' }
             case 'Late-In':
                 return { color: 'orange', icon: <IconAlertCircle size={14} />, label: 'Active: Late' }
             case 'Punch Out Missing':

@@ -8,11 +8,44 @@ import { supabase } from '@/lib/supabase'
  * Fetches logs from Python Bridge, compares with existing records,
  * and inserts only new records into Supabase attendance_logs table
  */
-export async function GET() {
+export async function GET(req) {
   try {
+    const url = new URL(req.url)
+    const refreshOnly = url.searchParams.get('refresh_only') === 'true'
+
+    if (refreshOnly) {
+      console.log('[SYNC] Refresh only mode: Clearing reports cache')
+      // Clear cache for today, yesterday, and tomorrow to ensure metrics update
+      const now = new Date()
+      const pakistanOffset = 5 * 60 * 60 * 1000
+      const pakNow = new Date(now.getTime() + pakistanOffset)
+
+      const datesToClear = []
+      for (let i = -1; i <= 1; i++) {
+        const d = new Date(pakNow)
+        d.setDate(d.getDate() + i)
+        datesToClear.push(d.toISOString().slice(0, 10))
+      }
+
+      const { error: deleteError } = await supabase
+        .from('daily_attendance_calculations')
+        .delete()
+        .in('date', datesToClear)
+
+      if (deleteError) {
+        console.warn('[SYNC] Cache clearing error:', deleteError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Dashboard data refreshed from database.',
+        clearedDates: datesToClear
+      })
+    }
+
     // Step 1: Fetch attendance logs from Python Bridge
     const pythonBridgeUrl = process.env.PYTHON_BRIDGE_URL
-    
+
     if (!pythonBridgeUrl) {
       return NextResponse.json(
         { error: 'PYTHON_BRIDGE_URL environment variable is not set' },
@@ -58,10 +91,10 @@ export async function GET() {
       } catch {
         // Ignore errors when reading error body
       }
-      
+
       const statusText = response.statusText || 'Unknown Error'
       const statusCode = response.status
-      
+
       if (statusCode === 404) {
         throw new Error(`Python Bridge endpoint not found (404). Please verify:\n1. The bridge is running\n2. The URL is correct: ${pythonBridgeUrl}\n3. The endpoint /api/zk/logs exists\n${errorDetails ? `\nError details: ${errorDetails}` : ''}`)
       } else if (statusCode === 500) {
@@ -104,7 +137,7 @@ export async function GET() {
 
       // Parse timestamp from Python Bridge response
       const logTimestamp = new Date(log.timestamp)
-      
+
       // Check if log is newer than the latest recorded timestamp
       // Using > instead of >= to handle edge cases where timestamps might match
       return logTimestamp > latestTimestamp
@@ -113,19 +146,19 @@ export async function GET() {
     // SAFETY LAYER: Check for and correct timezone offset corruption
     // If bridge sends times with +5 hour offset, detect and correct them
     console.log(`[SYNC] Checking for timezone offset corruption in ${newLogs.length} logs...`)
-    
+
     // Analyze first few logs to detect offset pattern
     const offsetAnalysis = {
       hasOffset: false,
       detectedOffset: 0,
       samplesChecked: 0,
     }
-    
+
     if (newLogs.length > 0) {
       // Check if logs have suspicious future dates or consistent offset pattern
       const now = new Date()
       let futureCount = 0
-      
+
       for (let i = 0; i < Math.min(newLogs.length, 5); i++) {
         const logDate = new Date(newLogs[i].timestamp)
         if (logDate > now) {
@@ -133,7 +166,7 @@ export async function GET() {
         }
         offsetAnalysis.samplesChecked++
       }
-      
+
       // If most recent logs are future-dated, they likely have +5 offset
       if (futureCount >= 3) {
         console.warn(`[SYNC] WARNING: Detected ${futureCount}/${offsetAnalysis.samplesChecked} future-dated logs. Likely UTC+5 offset corruption!`)
@@ -141,7 +174,7 @@ export async function GET() {
         offsetAnalysis.detectedOffset = 5
       }
     }
-    
+
     // Apply correction if offset detected
     const correctedLogs = newLogs.map(log => {
       if (offsetAnalysis.hasOffset && offsetAnalysis.detectedOffset > 0) {
@@ -156,7 +189,7 @@ export async function GET() {
       }
       return log
     })
-    
+
     if (offsetAnalysis.hasOffset) {
       console.log(`[SYNC] Offset Correction Applied: -${offsetAnalysis.detectedOffset} hours to ${correctedLogs.length} logs`)
     }
@@ -165,7 +198,7 @@ export async function GET() {
     // pyzk library returns timestamps that are already UTC from the device
     // We should NOT apply any additional offset - store them as-is
     console.log(`[SYNC] Validating timezone offsets for ${correctedLogs.length} logs after correction...`)
-    
+
     const MAX_OFFSET_HOURS = 6 // Flag anything with offset > ±6 hours as suspicious
     const offsetStats = {
       totalChecked: 0,
@@ -173,21 +206,21 @@ export async function GET() {
       suspiciousLogs: [],
       offsetDistribution: {}
     }
-    
+
     // Check each log for suspicious offsets
     for (const log of correctedLogs) {
       const logDate = new Date(log.timestamp)
       if (isNaN(logDate.getTime())) continue
-      
+
       offsetStats.totalChecked++
-      
+
       // After correction, logs should be in reasonable range (past 30 days to few hours in future)
       // Any remaining issues suggest other problems
-      
+
       const now = new Date()
       const timeDiff = Math.abs(now.getTime() - logDate.getTime())
       const daysDiff = timeDiff / (24 * 60 * 60 * 1000)
-      
+
       // Flag logs that are > 30 days old or in the future
       // (reasonable range for backlog syncing)
       if (daysDiff > 30) {
@@ -199,7 +232,7 @@ export async function GET() {
           reason: 'Log too old (> 30 days)',
         })
       }
-      
+
       if (logDate > now) {
         offsetStats.suspicious++
         offsetStats.suspiciousLogs.push({
@@ -208,16 +241,16 @@ export async function GET() {
           reason: 'Future-dated log (after correction)',
         })
       }
-      
+
       // Track offset distribution for monitoring
       const hourOfDay = logDate.getUTCHours()
       offsetStats.offsetDistribution[hourOfDay] = (offsetStats.offsetDistribution[hourOfDay] || 0) + 1
     }
-    
+
     if (offsetStats.suspicious > 0) {
       console.warn(`[SYNC] WARNING: ${offsetStats.suspicious} suspicious logs detected:`, offsetStats.suspiciousLogs)
     }
-    
+
     console.log(`[SYNC] Timezone offset validation complete:`, {
       totalChecked: offsetStats.totalChecked,
       suspicious: offsetStats.suspicious,
@@ -253,7 +286,7 @@ export async function GET() {
     if (allUniqueUsers.size > 0) {
       const employeesToUpsert = Array.from(allUniqueUsers.values())
       console.log(`Upserting ${employeesToUpsert.length} employees from ZK device`)
-      
+
       const { data: upsertedEmployees, error: upsertError } = await supabase
         .from('employees')
         .upsert(employeesToUpsert, {
@@ -288,7 +321,7 @@ export async function GET() {
       const userId = log.id || log.user_id
       return userId ? parseInt(userId, 10) : null
     }))].filter(id => id !== null && !isNaN(id))
-    
+
     // Query employees table to get employee_id (UUID) for each zk_user_id
     const { data: employees, error: employeesError } = await supabase
       .from('employees')
@@ -324,7 +357,7 @@ export async function GET() {
       // Get zk_user_id from log and convert to integer
       const zkUserId = log.id || log.user_id
       const zkUserIdInt = zkUserId ? parseInt(zkUserId, 10) : null
-      
+
       // Look up employee_id (UUID) from employees table using zk_user_id (as integer)
       const employeeId = zkUserIdInt && !isNaN(zkUserIdInt) ? employeeMap.get(zkUserIdInt) : null
 
@@ -339,7 +372,7 @@ export async function GET() {
         // but can be used to create/update employees in the employees table
       }
     })
-    
+
     // NEW: Log timestamp mapping details for audit trail
     if (mappedLogs.length > 0) {
       console.log(`[SYNC] Sample log mappings (first 3):`)
@@ -363,7 +396,26 @@ export async function GET() {
       throw new Error(`Failed to insert logs into Supabase: ${insertError.message}`)
     }
 
-    // Step 10: Return JSON response with number of new records inserted
+    // Step 10: Clear reports cache for the affected dates
+    // This ensures that the next dashboard load or metrics fetch will recalculate with new logs
+    const affectedDates = [...new Set(mappedLogs.map(log => log.log_time.slice(0, 10)))]
+    if (affectedDates.length > 0) {
+      console.log(`[SYNC] Clearing reports cache for dates: ${affectedDates.join(', ')}`)
+      try {
+        const { error: deleteError } = await supabase
+          .from('daily_attendance_calculations')
+          .delete()
+          .in('date', affectedDates)
+
+        if (deleteError) {
+          console.warn('[SYNC] Failed to clear reports cache:', deleteError)
+        }
+      } catch (cacheErr) {
+        console.warn('[SYNC] Exception clearing reports cache:', cacheErr)
+      }
+    }
+
+    // Step 11: Return JSON response with number of new records inserted
     const insertedCount = insertedData?.length || 0
 
     return NextResponse.json({
@@ -377,7 +429,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Sync error:', error)
-    
+
     return NextResponse.json(
       {
         success: false,

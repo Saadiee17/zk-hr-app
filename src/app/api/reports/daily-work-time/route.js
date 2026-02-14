@@ -45,34 +45,34 @@ const getWorkingDayForTimestamp = (timestamp, workingDayEnabled, workingDayStart
   if (!workingDayEnabled) {
     return getDateInPakistanTz(timestamp)
   }
-  
+
   // Parse working day start time (e.g., "10:00" -> { hour: 10, minute: 0 })
   const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
   const pakistanOffsetMs = 5 * 60 * 60 * 1000 // UTC+5
-  
+
   // Convert timestamp to Pakistan time
   const pakistanTime = new Date(timestamp.getTime() + pakistanOffsetMs)
-  
+
   // Get the calendar date in Pakistan timezone (YYYY-MM-DD)
   const pakistanDateStr = pakistanTime.toISOString().slice(0, 10)
-  
+
   // Create a date object for today at midnight UTC, then convert to Pakistan time
   const todayUTC = new Date(pakistanDateStr + 'T00:00:00Z')
   const todayPakistan = new Date(todayUTC.getTime() + pakistanOffsetMs)
-  
+
   // Set working day start time (e.g., 10:00 AM) for today in Pakistan time
   todayPakistan.setUTCHours(startHour, startMinute, 0, 0)
-  
+
   // Convert back to UTC for comparison
   const workingDayStartUTC = new Date(todayPakistan.getTime() - pakistanOffsetMs)
-  
+
   // If timestamp is before today's working day start, we're still in yesterday's working day
   if (timestamp < workingDayStartUTC) {
     const yesterdayUTC = new Date(todayUTC)
     yesterdayUTC.setUTCDate(yesterdayUTC.getUTCDate() - 1)
     return yesterdayUTC.toISOString().slice(0, 10)
   }
-  
+
   // We're in today's working day
   return pakistanDateStr
 }
@@ -82,12 +82,12 @@ const getExpectedShift = (seg) => {
   if (!seg || seg.length !== 8) return null
   const startHHMM = seg.slice(0, 4)
   const endHHMM = seg.slice(4, 8)
-  
+
   // Non-working day check
   if (startHHMM === '0000' && endHHMM === '2359') {
     return null // Day off
   }
-  
+
   return {
     startHHMM,
     endHHMM,
@@ -101,14 +101,14 @@ const getExpectedShift = (seg) => {
 const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, graceMinutes, workingDayEnabled = false, workingDayStartTime = '10:00') => {
   const dayMs = 24 * 60 * 60 * 1000
   const results = []
-  
+
   // Sort all logs by time
   const sortedLogs = [...allLogs].sort((a, b) => a.t - b.t)
-  
+
   if (sortedLogs.length === 0) {
     return results
   }
-  
+
   // Build a map of scheduled working days by UTC date
   // This defines the shift windows (SOURCE OF TRUTH for timing)
   // CRITICAL FIX: Start one day BEFORE the requested range to capture overnight shifts
@@ -117,52 +117,52 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
   // CRITICAL NOTE: The tz_string times are in PAKISTAN LOCAL TIME (UTC+5)
   // We need to convert them to UTC for matching against UTC punch timestamps
   const PAKISTAN_OFFSET_HOURS = 5
-  
+
   const scheduledDaysByUTCDate = new Map() // utc-date -> shift info (with schedule source)
   const scheduleStart = new Date(startDate.getTime() - dayMs) // One day before startDate
-  
+
   // Handle multiple schedules: schedule can be { tz_string } or { tz_strings: [...] }
   const tzStrings = schedule.tz_strings || (schedule.tz_string ? [schedule.tz_string] : [])
-  
+
   if (tzStrings.length === 0) {
     return results
   }
-  
+
   // Build shifts for ALL assigned schedules
   for (let d = new Date(scheduleStart); d <= endDate; d = new Date(d.getTime() + dayMs)) {
     const weekday = d.getUTCDay()
-    
+
     // Check each assigned schedule for this day
     for (const tzString of tzStrings) {
       const seg = segmentFromTz(tzString, weekday)
-    const shift = getExpectedShift(seg)
-    
-    // IMPORTANT: Even if shift is null (day off), we still want to track the date
-    // so that if employee punches in on their day off, we can mark them as present
-    const isDayOff = !shift
-    
-    if (shift || isDayOff) {
-      // For day off, use full 24-hour range to catch any punches
-      const shiftToUse = shift || {
-        startHHMM: '0000',
-        endHHMM: '2359',
-        crossesMidnight: false
-      }
-      
-      // Convert Pakistan local times to UTC times for matching
-      // e.g., 20:00 Pakistan (8 PM) → 15:00 UTC
-      const startHour = parseInt(shiftToUse.startHHMM.slice(0, 2))
-      const startMin = parseInt(shiftToUse.startHHMM.slice(2, 4))
-      const endHour = parseInt(shiftToUse.endHHMM.slice(0, 2))
-      const endMin = parseInt(shiftToUse.endHHMM.slice(2, 4))
-      
-      // Convert to UTC by subtracting Pakistan offset
+      const shift = getExpectedShift(seg)
+
+      // IMPORTANT: Even if shift is null (day off), we still want to track the date
+      // so that if employee punches in on their day off, we can mark them as present
+      const isDayOff = !shift
+
+      if (shift || isDayOff) {
+        // For day off, use full 24-hour range to catch any punches
+        const shiftToUse = shift || {
+          startHHMM: '0000',
+          endHHMM: '2359',
+          crossesMidnight: false
+        }
+
+        // Convert Pakistan local times to UTC times for matching
+        // e.g., 20:00 Pakistan (8 PM) → 15:00 UTC
+        const startHour = parseInt(shiftToUse.startHHMM.slice(0, 2))
+        const startMin = parseInt(shiftToUse.startHHMM.slice(2, 4))
+        const endHour = parseInt(shiftToUse.endHHMM.slice(0, 2))
+        const endMin = parseInt(shiftToUse.endHHMM.slice(2, 4))
+
+        // Convert to UTC by subtracting Pakistan offset
         // For overnight shifts, we need to be careful about day boundaries
-      let utcStartHour = startHour - PAKISTAN_OFFSET_HOURS
-      let utcEndHour = endHour - PAKISTAN_OFFSET_HOURS
+        let utcStartHour = startHour - PAKISTAN_OFFSET_HOURS
+        let utcEndHour = endHour - PAKISTAN_OFFSET_HOURS
         let utcStartDayOffset = 0
         let utcEndDayOffset = 0
-        
+
         // Handle negative hours (wrap to previous day for start, next day for end if overnight)
         if (utcStartHour < 0) {
           utcStartHour += 24
@@ -172,28 +172,28 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
           utcEndHour += 24
           utcEndDayOffset = 1 // End is on next UTC day (for overnight shifts)
         }
-        
+
         // For overnight shifts, end is always on next day
         if (shiftToUse.crossesMidnight) {
           utcEndDayOffset = 1
         }
-      
-      // Reconstruct HHMM strings in UTC
-      const utcStartHHMM = String(utcStartHour).padStart(2, '0') + String(startMin).padStart(2, '0')
-      const utcEndHHMM = String(utcEndHour).padStart(2, '0') + String(endMin).padStart(2, '0')
-      
-      // Update shift object with UTC times
-      const utcShift = {
-        ...shiftToUse,
-        startHHMM: utcStartHHMM,
-        endHHMM: utcEndHHMM
-      }
-      
+
+        // Reconstruct HHMM strings in UTC
+        const utcStartHHMM = String(utcStartHour).padStart(2, '0') + String(startMin).padStart(2, '0')
+        const utcEndHHMM = String(utcEndHour).padStart(2, '0') + String(endMin).padStart(2, '0')
+
+        // Update shift object with UTC times
+        const utcShift = {
+          ...shiftToUse,
+          startHHMM: utcStartHHMM,
+          endHHMM: utcEndHHMM
+        }
+
         // Calculate actual UTC date for shift start (accounting for day offset)
         const utcStartDate = new Date(d)
         utcStartDate.setUTCDate(utcStartDate.getUTCDate() + utcStartDayOffset)
         const utcDateStr = utcStartDate.toISOString().slice(0, 10)
-        
+
         // CRITICAL FIX: When working day is enabled, use working day date for grouping
         // This ensures shifts are assigned to the correct working day, not calendar date
         // Example: A shift starting at Nov 7 5 PM belongs to Nov 7 working day (10 AM - 9:59 AM next day)
@@ -203,36 +203,36 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         // Create a timestamp for the actual shift start (not just the date at 00:00)
         const actualShiftStartUTC = new Date(utcStartDate)
         actualShiftStartUTC.setUTCHours(parseInt(utcStartHHMM.slice(0, 2)), parseInt(utcStartHHMM.slice(2, 4)), 0, 0)
-        
-        const groupingDate = workingDayEnabled 
+
+        const groupingDate = workingDayEnabled
           ? getWorkingDayForTimestamp(actualShiftStartUTC, workingDayEnabled, workingDayStartTime)
           : utcDateStr
-        
+
         // DEBUG: Log the grouping calculation
         if (workingDayEnabled) {
           console.log(`[daily-work-time] Working day calculation for shift:`, {
             utcDate: utcDateStr,
             shiftStartUTC: actualShiftStartUTC.toISOString(),
-            shiftStartPakistan: new Date(actualShiftStartUTC.getTime() + 5*60*60*1000).toISOString(),
+            shiftStartPakistan: new Date(actualShiftStartUTC.getTime() + 5 * 60 * 60 * 1000).toISOString(),
             groupingDate: groupingDate,
             pakistanHHMM: shiftToUse.startHHMM
           })
         }
-        
+
         const shiftKey = `${groupingDate}-${tzString}` // Unique key per date-schedule combination
-        
+
         // Store ALL shifts for this date (one per schedule)
         // Use shiftKey to allow multiple shifts per date from different schedules
         if (!scheduledDaysByUTCDate.has(shiftKey)) {
           scheduledDaysByUTCDate.set(shiftKey, {
-        shift: utcShift,
+            shift: utcShift,
             utcDate: utcStartDate, // Use the actual UTC start date
-        is_half_day: false, // Regular shifts are not half days
-        is_day_off: isDayOff, // Track if this was a scheduled day off
+            is_half_day: false, // Regular shifts are not half days
+            is_day_off: isDayOff, // Track if this was a scheduled day off
             tz_string: tzString, // Track which schedule this shift belongs to
             dateKey: groupingDate, // FIXED: Use working day date for grouping
             utcEndDayOffset: utcEndDayOffset, // Track end day offset for proper window calculation
-      })
+          })
           const shiftDesc = isDayOff ? 'DAY OFF (will track punches if any)' : `Pakistan ${shiftToUse.startHHMM}-${shiftToUse.endHHMM} → UTC ${utcStartHHMM}-${utcEndHHMM}`
           console.log(`[daily-work-time] Shift ${utcDateStr} (${tzString}): ${shiftDesc} (UTC date: ${utcDateStr}, Working Day: ${groupingDate}, end offset: ${utcEndDayOffset} days)`)
         }
@@ -245,9 +245,9 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
   // We need to query using calendar dates that cover the UTC date range
   const startDateStr = startDate.toISOString().slice(0, 10)
   const endDateStr = endDate.toISOString().slice(0, 10)
-  
+
   console.log(`[daily-work-time] Fetching schedule exceptions for employee ${schedule.employee_id} from ${startDateStr} to ${endDateStr}`)
-  
+
   const { data: exceptions, error: exErr } = await supabase
     .from('schedule_exceptions')
     .select('date, start_time, end_time, is_day_off, is_half_day')
@@ -276,7 +276,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         // If it's a custom shift, create a new shift object and overwrite
         const startHHMM = ex.start_time.slice(0, 5).replace(':', '')
         const endHHMM = ex.end_time.slice(0, 5).replace(':', '')
-        
+
         const exceptionShift = {
           startHHMM,
           endHHMM,
@@ -288,22 +288,22 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         const startMin = parseInt(exceptionShift.startHHMM.slice(2, 4))
         const endHour = parseInt(exceptionShift.endHHMM.slice(0, 2))
         const endMin = parseInt(exceptionShift.endHHMM.slice(2, 4))
-        
+
         let utcStartHour = startHour - PAKISTAN_OFFSET_HOURS
         let utcEndHour = endHour - PAKISTAN_OFFSET_HOURS
-        
+
         if (utcStartHour < 0) utcStartHour += 24
         if (utcEndHour < 0) utcEndHour += 24
-        
+
         const utcStartHHMM = String(utcStartHour).padStart(2, '0') + String(startMin).padStart(2, '0')
         const utcEndHHMM = String(utcEndHour).padStart(2, '0') + String(endMin).padStart(2, '0')
-        
+
         const utcShift = {
           ...exceptionShift,
           startHHMM: utcStartHHMM,
           endHHMM: utcEndHHMM
         }
-        
+
         // For custom shift exceptions, replace ALL shifts for this date with the exception shift
         // First, remove all existing shifts for this date
         for (const [shiftKey, shiftInfo] of scheduledDaysByUTCDate) {
@@ -328,8 +328,8 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
           if (shiftInfo.dateKey === utcDateStr) {
             scheduledDaysByUTCDate.set(shiftKey, {
               ...shiftInfo,
-            is_half_day: true,
-          })
+              is_half_day: true,
+            })
             found = true
           }
         }
@@ -369,7 +369,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     .lte('start_date', endDate.toISOString().slice(0, 10))
 
   const leaveDates = new Set() // Set of YYYY-MM-DD strings (Pakistan dates)
-  
+
   if (lrErr) {
     console.error('[daily-work-time] Error fetching leave requests:', lrErr)
   } else if (leaveRequests && leaveRequests.length > 0) {
@@ -380,7 +380,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       // Parse the range and add each date
       const start = new Date(lr.start_date + 'T00:00:00Z')
       const end = new Date(lr.end_date + 'T00:00:00Z')
-      
+
       // Add all dates in the leave range (inclusive)
       // Convert each date to Pakistan date string to match how shift dates are displayed
       for (let d = new Date(start); d <= end; d = new Date(d.getTime() + dayMs)) {
@@ -392,27 +392,27 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     }
     console.log(`[daily-work-time] Leave dates: ${Array.from(leaveDates).join(', ')}`)
   }
-  
+
   if (scheduledDaysByUTCDate.size === 0) {
     return results
   }
-  
+
   // Group punches by which shift they belong to
   // Key: UTC date of the shift (not the punch), so late arrivals group with their shift
   // If working day is enabled, we also need to map shifts to working days
   const shiftPunches = new Map() // utc-date -> array of punches
-  
+
   // Map to track which working day each shift belongs to (when working day is enabled)
   const shiftToWorkingDay = new Map() // dateKey -> working-day-date
-  
+
   // Track punches that don't match any scheduled shift (for "Present" status)
   const unmatchedPunches = [] // Array of punches with no shift match
-  
+
   for (const log of sortedLogs) {
     let assignedShiftUTCDate = null
     let bestMatch = null
     let bestScore = -Infinity // Higher score = better match
-    
+
     // Find which shift this punch belongs to by checking ALL shift windows from ALL schedules
     // SIMPLIFIED: Match based on shift windows only, no complex working day logic
     for (const [shiftKey, shiftInfo] of scheduledDaysByUTCDate) {
@@ -424,16 +424,16 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       }
       const startClock = parseHHMM(shift.startHHMM)
       const endClock = parseHHMM(shift.endHHMM)
-      
+
       // Build shift window on THIS UTC date
       let windowStart = isoAt(shiftInfo.utcDate, startClock)
       // For end time, account for day offset if stored, otherwise use crossesMidnight flag
       const endDayOffset = shiftInfo.utcEndDayOffset !== undefined ? shiftInfo.utcEndDayOffset : (shift.crossesMidnight ? 1 : 0)
       let windowEnd = isoAt(new Date(shiftInfo.utcDate.getTime() + endDayOffset * dayMs), endClock)
-      
+
       // Add buffer: 2 hours before start
       const bufferStart = addMinutes(windowStart, -120)
-      
+
       // CRITICAL FIX: When working day is enabled, extend buffer end to working day boundary
       // This ensures late punch-outs within the working day are still matched to the correct shift
       // Example: Night 8-5 shift (11/06 8 PM to 11/07 5 AM) belongs to 11/06 working day
@@ -442,13 +442,13 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       if (workingDayEnabled) {
         // Parse working day start time (e.g., "10:00" -> { hour: 10, minute: 0 })
         const [workingDayHour, workingDayMinute] = workingDayStartTime.split(':').map(Number)
-        
+
         // The buffer should extend to the END of this shift's working day
         // Working day date is in shiftInfo.dateKey (e.g., "2025-11-06")
         // End of 11/06 working day = 10 AM on 11/07 (start of 11/07 working day)
         const workingDayDate = new Date(shiftInfo.dateKey + 'T00:00:00Z')
         const nextDay = new Date(workingDayDate.getTime() + dayMs)
-        
+
         // Calculate working day end in UTC
         // Example: 11/07 10:00 Pakistan = 11/07 05:00 UTC
         const pakistanOffsetMs = 5 * 60 * 60 * 1000
@@ -459,20 +459,20 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         // Default: 10 hours after shift end
         bufferEnd = addMinutes(windowEnd, 600)
       }
-      
+
       // Check if punch is within this shift's window
       if (log.t >= bufferStart && log.t <= bufferEnd) {
         // Score this match:
         // 1. If punch is within the actual shift window (not just buffer), give high priority
         // 2. For overnight shifts, if punch is after midnight but before shift end, prioritize this shift
         // 3. Otherwise, prefer shift with closest start time
-        
+
         const isWithinActualShift = log.t >= windowStart && log.t <= windowEnd
         // For overnight shifts, punches after midnight but before shift end belong to the shift that started the previous day
         // Check if punch is after the shift start and before the shift end (even if it's the next calendar day)
         const isAfterMidnight = shift.crossesMidnight && log.t >= windowStart && log.t < windowEnd
         const distanceToStart = Math.abs(log.t.getTime() - windowStart.getTime())
-        
+
         // SIMPLIFIED SCORING: Based on shift window proximity only
         let score = 0
         if (isWithinActualShift) {
@@ -495,11 +495,11 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
             score = Math.max(0, 100 - (distanceToStart / (60 * 60 * 1000)))
           }
         }
-        
+
         // Use score first, then prefer shift with closest start time for ties
-        const isBetterMatch = score > bestScore || 
+        const isBetterMatch = score > bestScore ||
           (score === bestScore && distanceToStart < Math.abs(log.t.getTime() - (bestMatch ? isoAt(bestMatch.utcDate, parseHHMM(bestMatch.shift.startHHMM)).getTime() : Infinity)))
-        
+
         if (isBetterMatch) {
           bestScore = score
           bestMatch = shiftInfo
@@ -507,7 +507,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         }
       }
     }
-    
+
     if (assignedShiftUTCDate) {
       if (!shiftPunches.has(assignedShiftUTCDate)) {
         shiftPunches.set(assignedShiftUTCDate, [])
@@ -523,7 +523,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       console.log(`[daily-work-time] Punch at ${new Date(log.t).toISOString()} (${pakistanDateStr} Pakistan) → NO SHIFT MATCH (checked all ${scheduledDaysByUTCDate.size} shifts)`)
     }
   }
-  
+
   // Keep the shiftToWorkingDay map for compatibility, but always use Pakistan calendar date
   for (const [shiftKey, shiftInfo] of scheduledDaysByUTCDate) {
     const dateKey = shiftInfo.dateKey
@@ -533,14 +533,14 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       console.log(`[daily-work-time] Shift ${dateKey} → Pakistan Date: ${pakistanDate}`)
     }
   }
-  
+
   // Group shifts by dateKey (since multiple schedules can have shifts on the same date)
   // We'll process one entry per date, using the shift that has punches or the first one
   const shiftsByDate = new Map() // dateKey -> { shiftInfo, punches }
   for (const [shiftKey, shiftInfo] of scheduledDaysByUTCDate) {
     const dateKey = shiftInfo.dateKey
     const punches = shiftPunches.get(dateKey) || []
-    
+
     if (!shiftsByDate.has(dateKey)) {
       shiftsByDate.set(dateKey, { shiftInfo, punches })
     } else {
@@ -551,24 +551,24 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       }
     }
   }
-  
+
   // Process each shift FIRST (grouped by date, displayed by working day or Pakistan date)
   // This ensures shifts are processed before unmatched punches, avoiding duplicates
   for (const [dateKey, { shiftInfo, punches }] of shiftsByDate) {
-    
+
     // Use Pakistan calendar date for display (simple and predictable)
     const displayDateStr = shiftToWorkingDay.get(dateKey) || getDateInPakistanTz(shiftInfo.utcDate)
-    
+
     // Also get Pakistan date for leave checking (leaves are stored by calendar date)
     const pakistanDateStr = getDateInPakistanTz(shiftInfo.utcDate)
-    
+
     // Check if this date already exists in results (to avoid duplicates)
     const existingIndex = results.findIndex(r => r.date === displayDateStr)
     if (existingIndex >= 0) {
       console.log(`[daily-work-time] WARNING: Date ${displayDateStr} already exists in results, skipping shift ${dateKey}`)
       continue
     }
-    
+
     if (punches.length === 0) {
       // No punches - check if it's a leave day, half day, day off, or absent
       let status = 'Absent'
@@ -599,19 +599,19 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     } else {
       // Sort punches chronologically
       const sortedPunches = punches.sort((a, b) => a.t - b.t)
-      
+
       console.log(`[daily-work-time] Shift ${dateKey}: ${sortedPunches.length} punches:`)
       sortedPunches.forEach((p, idx) => {
         console.log(`  [${idx}] ${new Date(p.t).toISOString()}`)
       })
-      
+
       // Process the shift - use the specific schedule's tz_string for this shift
       const shiftSchedule = { employee_id: schedule.employee_id, tz_string: shiftInfo.tz_string }
       const processedShift = processShift(sortedPunches, shiftInfo.utcDate, shiftSchedule, graceMinutes, leaveDates, pakistanDateStr, shiftInfo.is_half_day || false, shiftInfo.is_day_off || false)
-      
+
       // Use working day date for display if enabled
       processedShift.date = displayDateStr
-      
+
       console.log(`[daily-work-time] Shift ${dateKey} (display as ${displayDateStr}) calculated:`, {
         inTime: processedShift.inTime,
         outTime: processedShift.outTime,
@@ -623,7 +623,7 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
       results.push(processedShift)
     }
   }
-  
+
   // Process unmatched punches AFTER shifts - group by working day or calendar date
   // This ensures unmatched punches don't create duplicates with shift entries
   const unmatchedByDate = new Map() // date -> array of punches
@@ -637,38 +637,57 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     }
     unmatchedByDate.get(dateStr).push(log)
   }
-  
+
   // Add "Present" entries for unmatched punches
   for (const [dateStr, punches] of unmatchedByDate) {
     // Sort punches chronologically
     const sortedPunches = punches.sort((a, b) => a.t - b.t)
     const inTime = sortedPunches[0].t
-    const outTime = sortedPunches[sortedPunches.length - 1].t
-    const duration = outTime - inTime
+    const lastPunch = sortedPunches[sortedPunches.length - 1]
+    let outTime = lastPunch.t
+
+    // Determine if "Still Working" or "Punch Out Missing"
+    const now = new Date()
+    const timeSinceLastPunch = now.getTime() - lastPunch.t.getTime()
+    const maxBreakTime = 3 * 60 * 60 * 1000 // 3 hours
+
+    // Check if this punch is from today (Pakistan time)
+    const pakistanNow = new Date(now.getTime() + (5 * 60 * 60 * 1000))
+    const todayStr = pakistanNow.toISOString().slice(0, 10)
+    const isToday = dateStr === todayStr
+
+    let isStillWorking = isToday && (timeSinceLastPunch < maxBreakTime)
+    let isPunchOutMissing = !isStillWorking && (sortedPunches.length === 1)
+
+    // If working or missing out, outTime is null
+    if (isStillWorking || isPunchOutMissing) {
+      outTime = null
+    }
+
+    const duration = outTime ? (outTime - inTime) : 0
     const durationHours = duration / (60 * 60 * 1000)
-    
+
     // Check if this date already exists in results (from scheduled shifts)
     const existingIndex = results.findIndex(r => r.date === dateStr)
-    
+
     if (existingIndex >= 0) {
-      // If date already exists, this shouldn't happen (all punches should be matched)
-      // But if it does, skip creating a duplicate entry
+      // If date already exists, skip
       console.log(`[daily-work-time] WARNING: Unmatched punches for ${dateStr} but date already exists in results, skipping`)
     } else {
-      // Add new "Present" entry
+      // Add new entry
       results.push({
         date: dateStr,
         inTime: inTime.toISOString(),
-        outTime: outTime.toISOString(),
+        outTime: outTime ? outTime.toISOString() : null,
         durationHours: Math.round(durationHours * 100) / 100,
         regularHours: Math.round(durationHours * 100) / 100,
         overtimeHours: 0,
-        status: 'Present',
+        status: isPunchOutMissing ? 'Punch Out Missing' : 'Present',
       })
-      console.log(`[daily-work-time] Unmatched punches for ${dateStr}: ${sortedPunches.length} punches → Status: Present`)
+      console.log(`[daily-work-time] Unmatched punches for ${dateStr}: ${sortedPunches.length} punches → Status: ${isPunchOutMissing ? 'Punch Out Missing' : 'Present'}`)
     }
   }
-  
+
   return results.sort((a, b) => new Date(a.date) - new Date(b.date))
 }
 
@@ -691,22 +710,22 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       status: 'Absent',
     }
   }
-  
+
   // Sort punches chronologically
   const sortedPunches = punches.sort((a, b) => a.t - b.t)
-  
+
   // Use first and last punch, they should bracket the shift
   // All punches in between are considered part of the same shift (breaks, re-scans, gate access, etc)
   const inTime = sortedPunches[0].t
   const lastPunch = sortedPunches[sortedPunches.length - 1]
   let outTime = lastPunch.t
-  
+
   // FIRST: Determine if employee is still working BEFORE checking duration
   // This is critical for overnight shifts where someone might punch in late and still be working
   // If they're still working, we should NOT mark as "forgot punch out" even if duration > 12 hours
   let isStillWorking = false
   let forgotPunchOut = false
-  
+
   // Helper function to check if shift is still active
   // For overnight shifts, we allow a buffer past shift end (2 hours) to account for overtime
   const checkIfShiftStillActive = () => {
@@ -717,21 +736,21 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       const maxBreakTime = 3 * 60 * 60 * 1000 // 3 hours
       return timeSinceLastPunch < maxBreakTime
     }
-    
+
     const now = new Date()
     const shiftDateObj = new Date(shiftDate)
     shiftDateObj.setUTCHours(0, 0, 0, 0)
     const weekday = shiftDateObj.getUTCDay()
     const seg = segmentFromTz(schedule.tz_string, weekday)
     const shift = getExpectedShift(seg)
-    
+
     if (!shift) {
       // No shift defined - check if last punch was recent
       const timeSinceLastPunch = now.getTime() - lastPunch.t.getTime()
       const maxBreakTime = 3 * 60 * 60 * 1000 // 3 hours
       return timeSinceLastPunch < maxBreakTime
     }
-    
+
     const endClock = parseHHMM(shift.endHHMM)
     const PAKISTAN_OFFSET_HOURS = 5
     let utcEndHour = endClock.h - PAKISTAN_OFFSET_HOURS
@@ -741,22 +760,22 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
     if (shift.crossesMidnight) {
       expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
     }
-    
+
     // Add buffer for overtime (2 hours) - if they're working past shift end but within buffer, still consider them working
     // This handles cases where someone works overtime (e.g., shift ends at 5 AM but they work until 7 AM)
     const overtimeBuffer = 2 * 60 * 60 * 1000 // 2 hours
     const shiftEndWithOvertimeBuffer = new Date(expectedEnd.getTime() + overtimeBuffer)
-    
+
     // Also check if last punch was recent (within 3 hours) - if so, they might still be working
     const timeSinceLastPunch = now.getTime() - lastPunch.t.getTime()
     const maxBreakTime = 3 * 60 * 60 * 1000 // 3 hours
-    
+
     // They're still working if:
     // 1. Current time is before shift end + overtime buffer, OR
     // 2. Last punch was recent (within 3 hours) - they might be on a break or still working
     return now <= shiftEndWithOvertimeBuffer || timeSinceLastPunch < maxBreakTime
   }
-  
+
   if (sortedPunches.length === 1) {
     // Only one punch - check if shift is still active
     isStillWorking = checkIfShiftStillActive()
@@ -775,7 +794,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
     // even if duration between first and last punch > 12 hours
     // BUT: If last punch is clearly an OUT punch (after shift end or reasonable duration), shift is complete
     isStillWorking = checkIfShiftStillActive()
-    
+
     // Check if last punch is clearly an OUT punch
     // CRITICAL: We need to be careful - if someone punches near shift end, then punches again,
     // they're still working. The key insight: if we have 2+ punches and the last punch is near/after shift end,
@@ -787,7 +806,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       const weekday = shiftDateObj.getUTCDay()
       const seg = segmentFromTz(schedule.tz_string, weekday)
       const shift = getExpectedShift(seg)
-      
+
       if (shift) {
         const endClock = parseHHMM(shift.endHHMM)
         const PAKISTAN_OFFSET_HOURS = 5
@@ -798,12 +817,12 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
         if (shift.crossesMidnight) {
           expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
         }
-        
+
         const timeToShiftEnd = expectedEnd.getTime() - lastPunch.t.getTime()
         const timeSinceLastPunch = now.getTime() - lastPunch.t.getTime()
         const nearShiftEndThreshold = 2 * 60 * 60 * 1000 // 2 hours
         const recentPunchThreshold = 1 * 60 * 60 * 1000 // 1 hour - if last punch was very recent, they might punch again
-        
+
         // Treat as OUT punch if:
         // 1. Last punch is well AFTER shift end (definitely OUT), OR
         // 2. Last punch is near/after shift end AND it's been a while since that punch (they're not coming back)
@@ -819,7 +838,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
         // Otherwise, if last punch was very recent (< 1 hour), they might still be working - keep isStillWorking as determined by checkIfShiftStillActive()
       }
     }
-    
+
     // If shift is still active, they're working - set outTime to null
     // If shift ended, use the actual outTime (last punch)
     if (isStillWorking) {
@@ -829,7 +848,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       // Shift has ended - check duration to see if they forgot to punch out
       const durationMs = outTime.getTime() - inTime.getTime()
       const durationHoursRaw = durationMs / (60 * 60 * 1000)
-      
+
       // CRITICAL FIX: Only apply the 12-hour max duration check if the last punch is NOT after shift end
       // If the last punch is after shift end (and was matched to this shift), it's a valid OUT punch
       // regardless of duration. This handles cases where someone works overtime or punches out late
@@ -841,7 +860,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
         const weekday = shiftDateObj.getUTCDay()
         const seg = segmentFromTz(schedule.tz_string, weekday)
         const shift = getExpectedShift(seg)
-        
+
         if (shift) {
           const endClock = parseHHMM(shift.endHHMM)
           const PAKISTAN_OFFSET_HOURS = 5
@@ -852,12 +871,12 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
           if (shift.crossesMidnight) {
             expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
           }
-          
+
           // If last punch is after shift end, it's a legitimate OUT punch
           isLastPunchAfterShiftEnd = lastPunch.t >= expectedEnd
         }
       }
-      
+
       // If duration exceeds maximum AND last punch is not after shift end, they likely forgot to punch out
       if (durationHoursRaw > MAX_SHIFT_DURATION_HOURS && !isLastPunchAfterShiftEnd) {
         forgotPunchOut = true
@@ -866,12 +885,12 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       // Otherwise, use the actual outTime (last punch)
     }
   }
-  
+
   // Set outTime to null if still working
   if (isStillWorking) {
     outTime = null
   }
-  
+
   // Calculate duration only if we have both IN and OUT times
   let duration = 0
   let durationHours = 0
@@ -879,12 +898,12 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
     duration = outTime - inTime
     durationHours = duration / (60 * 60 * 1000)
   }
-  
+
   // Use the shiftDate parameter (the assigned shift date) to calculate shift times
   // Don't recalculate from punch time, as punches may be late arrivals/early departures
   const shiftDateObj = new Date(shiftDate)
   shiftDateObj.setUTCHours(0, 0, 0, 0)
-  
+
   // Get the expected shift for the assigned shift date
   // If no schedule provided, return basic "Present" status
   if (!schedule || !schedule.tz_string) {
@@ -898,7 +917,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       status: forgotPunchOut ? 'Punch Out Missing' : 'Present',
     }
   }
-  
+
   // If it's a scheduled day off and employee showed up, mark as "Worked on Day Off"
   if (is_day_off) {
     return {
@@ -911,39 +930,39 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       status: forgotPunchOut ? 'Punch Out Missing' : 'Worked on Day Off',
     }
   }
-  
+
   const weekday = shiftDateObj.getUTCDay()
   const seg = segmentFromTz(schedule.tz_string, weekday)
   const shift = getExpectedShift(seg)
-  
+
   let status = 'Present'
   let regularHours = durationHours
   let overtimeHours = 0
-  
+
   if (shift) {
     const startClock = parseHHMM(shift.startHHMM)
     const endClock = parseHHMM(shift.endHHMM)
-    
+
     // Convert Pakistan times to UTC times (shift.startHHMM and shift.endHHMM are in Pakistan time)
     const PAKISTAN_OFFSET_HOURS = 5
     let utcStartHour = startClock.h - PAKISTAN_OFFSET_HOURS
     let utcEndHour = endClock.h - PAKISTAN_OFFSET_HOURS
-    
+
     // Handle negative hours (wrap to previous day)
     if (utcStartHour < 0) utcStartHour += 24
     if (utcEndHour < 0) utcEndHour += 24
-    
+
     const utcStartClock = { h: utcStartHour, m: startClock.m }
     const utcEndClock = { h: utcEndHour, m: endClock.m }
-    
+
     // Use shiftDateObj (the assigned shift date) to calculate shift times in UTC
     let expectedStart = isoAt(shiftDateObj, utcStartClock)
     let expectedEnd = isoAt(shiftDateObj, utcEndClock)
-    
+
     if (shift.crossesMidnight) {
       expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
     }
-    
+
     // Determine status - check if still working first, then forgot punch out, then half day, then on-time/late-in/out-of-schedule
     // CRITICAL: If still working, status should be On-Time or Late-In, NOT "Punch Out Missing"
     if (isStillWorking) {
@@ -964,29 +983,29 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       // Buffer is only for matching punches to shifts, but for status we check actual shift times
       const actualShiftStart = expectedStart
       const actualShiftEnd = expectedEnd
-      
+
       // Check if first punch is within the actual shift window
       // NOTE: This buffer should be generous to avoid marking valid punches as "Out of Schedule"
       // For now, keep a reasonable buffer of 2 hours before and after
       const strictBufferStart = addMinutes(actualShiftStart, -120)
       const strictBufferEnd = addMinutes(actualShiftEnd, 120)
-      
+
       console.log(`[daily-work-time] Status check for shift ${pakistanDateStr}:`)
       console.log(`  Shift window: ${actualShiftStart.toISOString()} - ${actualShiftEnd.toISOString()}`)
       console.log(`  Buffer window: ${strictBufferStart.toISOString()} - ${strictBufferEnd.toISOString()}`)
       console.log(`  First punch: ${inTime.toISOString()}`)
-      
+
       const isWithinActualShift = inTime >= strictBufferStart && inTime <= strictBufferEnd
-      
+
       console.log(`  Within shift window: ${isWithinActualShift}`)
-      
+
       if (!isWithinActualShift) {
         // Punches are way outside the actual shift window - mark as "Out of Schedule"
         status = 'Out of Schedule'
       } else {
         // Punches are within shift window, check if on-time or late-in
         const onTimeThreshold = addMinutes(expectedStart, graceMinutes)
-        
+
         if (inTime <= onTimeThreshold) {
           status = 'On-Time'
         } else {
@@ -994,14 +1013,14 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
         }
       }
     }
-    
+
     // Calculate regular vs overtime
     const shiftDuration = expectedEnd - expectedStart
     const scheduledHours = shiftDuration / (60 * 60 * 1000)
-    
+
     // For half days, the scheduled hours are halved
     const effectiveScheduledHours = is_half_day ? scheduledHours / 2 : scheduledHours
-    
+
     if (durationHours <= effectiveScheduledHours) {
       regularHours = durationHours
       overtimeHours = 0
@@ -1010,7 +1029,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       overtimeHours = durationHours - effectiveScheduledHours
     }
   }
-  
+
   return {
     date: shiftDate.toISOString().slice(0, 10),
     inTime: inTime ? inTime.toISOString() : null,
@@ -1069,15 +1088,15 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
       status: 'Employee Not Found',
     }]
   }
-  
+
   // Collect ALL assigned time zone IDs (individual overrides first, then department schedules)
   const assignedTzIds = []
-  
+
   // Add individual time zones (in order of priority)
   if (emp.individual_tz_1) assignedTzIds.push(emp.individual_tz_1)
   if (emp.individual_tz_2) assignedTzIds.push(emp.individual_tz_2)
   if (emp.individual_tz_3) assignedTzIds.push(emp.individual_tz_3)
-  
+
   // If no individual overrides, get department schedules
   if (assignedTzIds.length === 0 && emp.department_id) {
     const { data: sched, error: schedErr } = await supabase
@@ -1091,7 +1110,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
       if (sched.tz_id_3) assignedTzIds.push(sched.tz_id_3)
     }
   }
-  
+
   if (assignedTzIds.length === 0) {
     return [{
       date: startDateStr,
@@ -1111,12 +1130,12 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
     .in('id', assignedTzIds)
 
   if (tzErr) throw new Error(tzErr.message)
-  
+
   // Create a map of tz_id -> tz_string and buffer_time_minutes
   const tzMap = new Map()
   const tzStrings = []
   let scheduleBufferMinutes = null
-  
+
   if (timeZones && timeZones.length > 0) {
     for (const tz of timeZones) {
       tzMap.set(tz.id, {
@@ -1132,7 +1151,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
       }
     }
   }
-  
+
   const tzString = tzStrings.length > 0 ? tzStrings[0] : null
 
   // Get company-wide buffer time default
@@ -1154,10 +1173,10 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
     .eq('id', emp.department_id)
     .maybeSingle()
   if (deptErr) throw new Error(deptErr.message)
-  
+
   // Priority: Schedule override > Company-wide default > Department grace period > 30 minutes
-  const graceMinutes = scheduleBufferMinutes != null 
-    ? scheduleBufferMinutes 
+  const graceMinutes = scheduleBufferMinutes != null
+    ? scheduleBufferMinutes
     : (companyBufferMinutes != null ? companyBufferMinutes : (dept?.grace_period_minutes != null ? Number(dept.grace_period_minutes) : 30))
 
   console.log('[daily-work-time] Input & Schedule', {
@@ -1191,7 +1210,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
   const allLogs = (logs || [])
     .map((l) => ({ t: new Date(l.log_time) }))
     .filter((l) => !isNaN(l.t?.getTime?.()))
-  
+
   console.log('[daily-work-time] Total Timestamps', { count: allLogs.length })
 
   // Fetch working day settings
@@ -1202,7 +1221,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
       .from('company_settings')
       .select('setting_key, setting_value')
       .in('setting_key', ['working_day_enabled', 'working_day_start_time'])
-    
+
     if (companySettings) {
       const settingsMap = new Map(companySettings.map(s => [s.setting_key, s.setting_value]))
       workingDayEnabled = settingsMap.get('working_day_enabled') === 'true'
@@ -1217,12 +1236,12 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
 
   // Use intelligent shift matching with ALL assigned schedules
   const results = await matchPunchesToShifts(
-    allLogs, 
-    startDate, 
-    endDate, 
+    allLogs,
+    startDate,
+    endDate,
     { employee_id: employeeId, tz_strings: tzStrings }, // Pass all schedules
-    graceMinutes, 
-    workingDayEnabled, 
+    graceMinutes,
+    workingDayEnabled,
     workingDayStartTime
   )
 
@@ -1266,7 +1285,7 @@ export async function GET(req) {
         .gte('date', startDateStr)
         .lte('date', endDateStr)
         .order('date', { ascending: true })
-      
+
       if (error) {
         console.warn('[daily-work-time] Cache query error (will fall back to calculation):', error)
         cacheError = error
@@ -1286,10 +1305,10 @@ export async function GET(req) {
     // STEP 3: If all dates are cached, return immediately (fast path)
     if (missingDates.length === 0 && cachedResults.length > 0) {
       console.log('[daily-work-time] All dates cached, returning from cache')
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         data: cachedResults.map(formatCachedResult),
-        cached: true 
+        cached: true
       })
     }
 
@@ -1297,14 +1316,14 @@ export async function GET(req) {
     let calculatedResults = []
     if (missingDates.length > 0) {
       console.log(`[daily-work-time] Calculating ${missingDates.length} missing dates: ${missingDates.join(', ')}`)
-      
+
       // Calculate for the full range (we need all dates for proper shift matching)
       // But we'll only store the missing ones
       const allCalculated = await calculateForDateRange(employeeId, startDateStr, endDateStr)
-      
+
       // Filter to only missing dates
       calculatedResults = allCalculated.filter(r => missingDates.includes(r.date))
-      
+
       // STEP 5: Store new calculations in cache
       if (calculatedResults.length > 0) {
         const cacheInserts = calculatedResults.map(result => ({
@@ -1347,8 +1366,8 @@ export async function GET(req) {
 
     console.log(`[daily-work-time] Returning ${allResults.length} results (${cachedResults.length} cached, ${calculatedResults.length} calculated)`)
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: allResults,
       cached: cachedResults.length,
       calculated: calculatedResults.length
