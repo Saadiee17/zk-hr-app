@@ -108,6 +108,11 @@ function Dashboard({ isCollapsed }) {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState('status')
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [settings, setSettings] = useState({
+    workingDayEnabled: false,
+    workingDayStartTime: '09:00'
+  })
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Fetch attendance logs with pagination
   const fetchLogs = async (page = 1, limit = 50, fetchAll = false) => {
@@ -229,19 +234,18 @@ function Dashboard({ isCollapsed }) {
         setLoadingMetrics(true)
       }
 
-      // Fetch company working day settings
-      const settingsResponse = await fetch('/api/hr/company-settings')
-      const settingsResult = await settingsResponse.json()
-      const workingDayEnabled = settingsResult.data?.working_day_enabled || false
-      const workingDayStartTime = settingsResult.data?.working_day_start_time || '10:00'
+      // Use settings from state (fetched on mount)
+      const workingDayEnabled = settings.workingDayEnabled
+      const workingDayStartTime = settings.workingDayStartTime
 
       // Get current date in Pakistan timezone (UTC+5)
       const now = new Date()
+      // Use toYMD to compare browser local dates
+      const isToday = toYMD(selectedDate) === toYMD(now)
+
+      // Pakistan is UTC+5
       const pakistanOffset = 5 * 60 * 60 * 1000
       const pakistanNow = new Date(now.getTime() + pakistanOffset)
-
-      // Determine if selected date is "today" (compare YMD)
-      const isToday = toYMD(selectedDate) === toYMD(now)
 
       // Determine the "effective working day" based on company settings
       let effectiveDateStr
@@ -251,30 +255,22 @@ function Dashboard({ isCollapsed }) {
         effectiveDateStr = pakistanNow.toISOString().slice(0, 10)
         yesterdayDateStr = new Date(pakistanNow.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-        if (workingDayEnabled) {
-          // Parse working day start time (e.g., "10:00")
-          const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
-          const currentHour = pakistanNow.getUTCHours()
-          const currentMinute = pakistanNow.getUTCMinutes()
-          const currentTimeMinutes = currentHour * 60 + currentMinute
-          const workingDayStartMinutes = startHour * 60 + startMinute
+        const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
+        const currentHour = pakistanNow.getUTCHours()
+        const currentMinute = pakistanNow.getUTCMinutes()
+        const currentTimeMinutes = currentHour * 60 + currentMinute
+        const workingDayStartMinutes = startHour * 60 + startMinute
 
-          // If current time is before working day start, we're still on yesterday's working day
-          if (currentTimeMinutes < workingDayStartMinutes) {
-            effectiveDateStr = yesterdayDateStr
-            console.log(`[Metrics] Before working day start (${workingDayStartTime}), using yesterday's working day: ${effectiveDateStr}`)
-          } else {
-            console.log(`[Metrics] After working day start (${workingDayStartTime}), using today's working day: ${effectiveDateStr}`)
-          }
+        if (workingDayEnabled && currentTimeMinutes < workingDayStartMinutes) {
+          effectiveDateStr = yesterdayDateStr
+          console.log(`[Metrics] Before working day start (${workingDayStartTime}), using yesterday's working day: ${effectiveDateStr}`)
         }
       } else {
-        // Use selected date directly
         effectiveDateStr = toYMD(selectedDate)
         const selDate = new Date(selectedDate)
         const prevDate = new Date(selDate)
         prevDate.setDate(prevDate.getDate() - 1)
         yesterdayDateStr = toYMD(prevDate)
-        console.log(`[Metrics] Using selected date: ${effectiveDateStr}`)
       }
 
       const pakistanDateStr = effectiveDateStr
@@ -573,8 +569,49 @@ function Dashboard({ isCollapsed }) {
     }
   }
 
+  // Fetch company settings on mount and initialize date
+  useEffect(() => {
+    const initSettings = async () => {
+      try {
+        const response = await fetch('/api/hr/company-settings')
+        const result = await response.json()
+        const enabled = result.data?.working_day_enabled === 'true' || result.data?.working_day_enabled === true
+        const startTime = result.data?.working_day_start_time || '09:00'
+
+        setSettings({
+          workingDayEnabled: enabled,
+          workingDayStartTime: startTime
+        })
+        setSettingsLoaded(true)
+
+        // Adjust initial selectedDate if working day is active
+        if (enabled) {
+          const now = new Date()
+          const pakistanOffset = 5 * 60 * 60 * 1000
+          const pakistanNow = new Date(now.getTime() + pakistanOffset)
+          const [startHour, startMinute] = startTime.split(':').map(Number)
+          const currentHour = pakistanNow.getUTCHours()
+          const currentMinute = pakistanNow.getUTCMinutes()
+
+          if (currentHour * 60 + currentMinute < startHour * 60 + startMinute) {
+            // It's before the new working day starts, so default to yesterday
+            console.log(`[INIT] Before working day start (${startTime}), defaulting selected date to yesterday`)
+            const yesterday = new Date(now)
+            yesterday.setDate(yesterday.getDate() - 1)
+            setSelectedDate(yesterday)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load settings:', e)
+        setSettingsLoaded(true)
+      }
+    }
+    initSettings()
+  }, [])
+
   // Auto-sync: Initial sync after 2 seconds, then every 5 minutes
   useEffect(() => {
+    if (!settingsLoaded) return
     const initialTimer = setTimeout(() => {
       handleSync(true) // true = silent
     }, 2000)
@@ -587,16 +624,17 @@ function Dashboard({ isCollapsed }) {
       clearTimeout(initialTimer)
       clearInterval(interval)
     }
-  }, [handleSync])
+  }, [handleSync, settingsLoaded])
 
   // Background metrics refresh every 2 minutes
   useEffect(() => {
+    if (!settingsLoaded) return
     const interval = setInterval(() => {
       fetchMetrics(true) // true = background refresh
     }, 2 * 60 * 1000) // 2 minutes
 
     return () => clearInterval(interval)
-  }, [fetchMetrics])
+  }, [fetchMetrics, settingsLoaded])
 
   // Initial data load
   useEffect(() => {
@@ -791,7 +829,10 @@ function Dashboard({ isCollapsed }) {
             </div>
             <Group gap="md">
               <Paper withBorder p="xs" radius="md" style={{ background: '#f8f9fa', borderStyle: 'dashed' }}>
-                <Group gap="sm">
+                <Group gap="sm" wrap="nowrap">
+                  {toYMD(selectedDate) !== toYMD(new Date()) && (
+                    <Badge variant="dot" color="orange" size="xs" styles={{ root: { border: 'none' } }}>WORKING DAY</Badge>
+                  )}
                   <DatePickerInput
                     value={selectedDate}
                     onChange={setSelectedDate}
