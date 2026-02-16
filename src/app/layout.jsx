@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
@@ -39,6 +40,7 @@ export default function RootLayout({ children }) {
           </AuthProvider>
         </ThemeProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
