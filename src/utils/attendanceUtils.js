@@ -58,7 +58,7 @@ export const toYMD = (d) => {
  */
 export const getStatusColor = (status) => {
   if (!status) return 'gray'
-  
+
   const statusColorMap = {
     'On-Time': 'green',
     'Late-In': 'orange',
@@ -69,7 +69,7 @@ export const getStatusColor = (status) => {
     'Punch Out Missing': 'red',
     'Absent': 'red',
   }
-  
+
   return statusColorMap[status] || 'gray'
 }
 
@@ -82,12 +82,54 @@ export const getStatusOptions = (reportRows) => {
   if (!reportRows || reportRows.length === 0) {
     return [{ value: '', label: 'All Statuses' }]
   }
-  
+
   const statuses = [...new Set(reportRows.map(r => r.status).filter(Boolean))]
   return [
     { value: '', label: 'All Statuses' },
     ...statuses.map(s => ({ value: s, label: s }))
   ]
+}
+
+/**
+ * Get current date/time in Pakistan (UTC+5)
+ * @returns {Date} Pakistan time as a Date object
+ */
+export const getPakistanNow = () => {
+  const now = new Date()
+  const pakistanOffset = 5 * 60 * 60 * 1000 // UTC+5
+  return new Date(now.getTime() + pakistanOffset)
+}
+
+/**
+ * Determine the effective working day date string (YYYY-MM-DD)
+ * 
+ * If working day is enabled, it checks if current time is before the start time.
+ * Example: If start time is 09:00 AM and it is 02:00 AM Tuesday, the effective day is Monday.
+ * 
+ * @param {boolean} enabled - Whether working day concept is enabled
+ * @param {string} startTime - HH:MM start time (e.g. "09:00")
+ * @returns {string} YYYY-MM-DD date string
+ */
+export const getEffectiveWorkingDayDate = (enabled, startTime = '09:00') => {
+  const pakNow = getPakistanNow()
+  const dateStr = pakNow.toISOString().slice(0, 10)
+
+  if (!enabled) return dateStr
+
+  const [startHour, startMinute] = startTime.split(':').map(Number)
+  const currentHour = pakNow.getUTCHours()
+  const currentMinute = pakNow.getUTCMinutes()
+  const currentTimeMinutes = currentHour * 60 + currentMinute
+  const workingDayStartMinutes = startHour * 60 + startMinute
+
+  if (currentTimeMinutes < workingDayStartMinutes) {
+    // We are still in the previous working day
+    const yesterday = new Date(pakNow)
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+    return yesterday.toISOString().slice(0, 10)
+  }
+
+  return dateStr
 }
 
 /**

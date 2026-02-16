@@ -48,7 +48,7 @@ import {
 import { showError, showLoading, updateNotification } from '@/utils/notifications'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
 import { DatePickerInput } from '@mantine/dates'
-import { formatHoursMinutes, toYMD } from '@/utils/attendanceUtils'
+import { formatHoursMinutes, toYMD, getEffectiveWorkingDayDate, getPakistanNow } from '@/utils/attendanceUtils'
 import Link from 'next/link'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -230,41 +230,30 @@ function Dashboard({ isCollapsed }) {
   // Fetch dashboard metrics using API (single source of truth!)
   const fetchMetrics = useCallback(async (background = false) => {
     try {
-      if (!background) {
-        setLoadingMetrics(true)
-      }
-
-      // Use settings from state (fetched on mount)
+      // Use settings from state (fetched on mount or derived from settings)
       const workingDayEnabled = settings.workingDayEnabled
       const workingDayStartTime = settings.workingDayStartTime
 
-      // Get current date in Pakistan timezone (UTC+5)
+      // Determine the "effective working day" for the currently selected date
+      // If today is selected, we might need to look at "yesterday's" working day
       const now = new Date()
-      // Use toYMD to compare browser local dates
       const isToday = toYMD(selectedDate) === toYMD(now)
 
-      // Pakistan is UTC+5
-      const pakistanOffset = 5 * 60 * 60 * 1000
-      const pakistanNow = new Date(now.getTime() + pakistanOffset)
-
-      // Determine the "effective working day" based on company settings
       let effectiveDateStr
       let yesterdayDateStr
 
       if (isToday) {
-        effectiveDateStr = pakistanNow.toISOString().slice(0, 10)
-        yesterdayDateStr = new Date(pakistanNow.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        // Use universal logic to determine current working day
+        effectiveDateStr = getEffectiveWorkingDayDate(workingDayEnabled, workingDayStartTime)
 
-        const [startHour, startMinute] = workingDayStartTime.split(':').map(Number)
-        const currentHour = pakistanNow.getUTCHours()
-        const currentMinute = pakistanNow.getUTCMinutes()
-        const currentTimeMinutes = currentHour * 60 + currentMinute
-        const workingDayStartMinutes = startHour * 60 + startMinute
+        // Calculate previous day for comparisons/metrics
+        const pakNow = getPakistanNow()
+        const effectiveDate = new Date(effectiveDateStr + 'T00:00:00Z')
+        const yesterday = new Date(effectiveDate)
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+        yesterdayDateStr = yesterday.toISOString().slice(0, 10)
 
-        if (workingDayEnabled && currentTimeMinutes < workingDayStartMinutes) {
-          effectiveDateStr = yesterdayDateStr
-          console.log(`[Metrics] Before working day start (${workingDayStartTime}), using yesterday's working day: ${effectiveDateStr}`)
-        }
+        console.log(`[Metrics] Today selected. Effective Working Day: ${effectiveDateStr}`)
       } else {
         effectiveDateStr = toYMD(selectedDate)
         const selDate = new Date(selectedDate)
@@ -584,21 +573,15 @@ function Dashboard({ isCollapsed }) {
         })
         setSettingsLoaded(true)
 
-        // Adjust initial selectedDate if working day is active
+        // Use universal logic to initialize the default date
         if (enabled) {
-          const now = new Date()
-          const pakistanOffset = 5 * 60 * 60 * 1000
-          const pakistanNow = new Date(now.getTime() + pakistanOffset)
-          const [startHour, startMinute] = startTime.split(':').map(Number)
-          const currentHour = pakistanNow.getUTCHours()
-          const currentMinute = pakistanNow.getUTCMinutes()
+          const effectiveDayStr = getEffectiveWorkingDayDate(enabled, startTime)
+          const todayCalendarStr = getPakistanNow().toISOString().slice(0, 10)
 
-          if (currentHour * 60 + currentMinute < startHour * 60 + startMinute) {
-            // It's before the new working day starts, so default to yesterday
-            console.log(`[INIT] Before working day start (${startTime}), defaulting selected date to yesterday`)
-            const yesterday = new Date(now)
-            yesterday.setDate(yesterday.getDate() - 1)
-            setSelectedDate(yesterday)
+          if (effectiveDayStr !== todayCalendarStr) {
+            console.log(`[INIT] Working day is active, defaulting to: ${effectiveDayStr}`)
+            const effectiveDate = new Date(effectiveDayStr + 'T00:00:00Z')
+            setSelectedDate(effectiveDate)
           }
         }
       } catch (e) {
