@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Container,
   Title,
@@ -115,7 +115,7 @@ function Dashboard({ isCollapsed }) {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Fetch attendance logs with pagination
-  const fetchLogs = async (page = 1, limit = 50, fetchAll = false) => {
+  const fetchLogs = useCallback(async (page = 1, limit = 50, fetchAll = false) => {
     try {
       setLoading(true)
 
@@ -178,94 +178,31 @@ function Dashboard({ isCollapsed }) {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Refresh data from Supabase (clears reports cache)
-  const handleSync = useCallback(async (silent = false) => {
-    // Prevent multiple simultaneous refreshes
-    if (syncingRef.current) {
-      return
-    }
-
-    let notificationId = null
-    try {
-      syncingRef.current = true
-      setSyncing(true)
-
-      if (!silent) {
-        notificationId = showLoading('Refreshing dashboard data...', 'Update In Progress', { id: 'refreshing' })
-      }
-
-      const response = await fetch('/api/sync?refresh_only=true', { method: 'GET' })
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Refresh failed')
-      }
-
-      setLastSyncTime(new Date())
-
-      if (!silent && notificationId) {
-        updateNotification('refreshing', result.message || 'Data updated successfully', 'Success', 'success', { autoClose: 2000 })
-      }
-
-      // Refresh logs and metrics
-      if (logsSearchQuery.trim() && allLogs.length > 0) {
-        await fetchLogs(1, logsPerPage, true)
-      } else {
-        await fetchLogs(currentPage, logsPerPage, false)
-      }
-      await fetchMetrics()
-    } catch (error) {
-      console.error('[Refresh] Error:', error)
-      if (!silent && notificationId) {
-        updateNotification('refreshing', error.message || 'Failed to refresh data', 'Update Error', 'error', { autoClose: 4000 })
-      }
-    } finally {
-      setSyncing(false)
-      syncingRef.current = false
-    }
-  }, [currentPage, logsPerPage, logsSearchQuery, allLogs.length])
+  }, [])
 
   // Fetch dashboard metrics using API (single source of truth!)
   const fetchMetrics = useCallback(async (background = false) => {
+    // Capture the date this request is for
+    const requestDateStr = toYMD(selectedDate)
+
     try {
+      if (!background) setLoadingMetrics(true)
       // Use settings from state (fetched on mount or derived from settings)
       const workingDayEnabled = settings.workingDayEnabled
       const workingDayStartTime = settings.workingDayStartTime
 
-      // Determine the "effective working day" for the currently selected date
-      // If today is selected, we might need to look at "yesterday's" working day
-      const now = new Date()
-      const isToday = toYMD(selectedDate) === toYMD(now)
+      // Simplified: We fetch exactly what the user has selected. 
+      // The \"Working Day\" logic now only handles the INITIAL default date
+      // to ensure UI selection is always absolute and predictable.
+      const pakistanDateStr = toYMD(selectedDate)
 
-      let effectiveDateStr
-      let yesterdayDateStr
+      // Calculate previous day for comparisons/metrics
+      const selDate = new Date(selectedDate)
+      const prevDate = new Date(selDate)
+      prevDate.setDate(prevDate.getDate() - 1)
+      const pakistanYesterdayStr = toYMD(prevDate)
 
-      if (isToday) {
-        // Use universal logic to determine current working day
-        effectiveDateStr = getEffectiveWorkingDayDate(workingDayEnabled, workingDayStartTime)
-
-        // Calculate previous day for comparisons/metrics
-        const pakNow = getPakistanNow()
-        const effectiveDate = new Date(effectiveDateStr + 'T00:00:00Z')
-        const yesterday = new Date(effectiveDate)
-        yesterday.setUTCDate(yesterday.getUTCDate() - 1)
-        yesterdayDateStr = yesterday.toISOString().slice(0, 10)
-
-        console.log(`[Metrics] Today selected. Effective Working Day: ${effectiveDateStr}`)
-      } else {
-        effectiveDateStr = toYMD(selectedDate)
-        const selDate = new Date(selectedDate)
-        const prevDate = new Date(selDate)
-        prevDate.setDate(prevDate.getDate() - 1)
-        yesterdayDateStr = toYMD(prevDate)
-      }
-
-      const pakistanDateStr = effectiveDateStr
-      const pakistanYesterdayStr = yesterdayDateStr
-
-      console.log(`[Metrics] Fetching for Effective Date: ${pakistanDateStr}, Previous Day: ${pakistanYesterdayStr}`)
+      console.log(`[Metrics] Fetching for Date: ${pakistanDateStr}, Previous Day: ${pakistanYesterdayStr}`)
 
       // Fetch all employees
       const empResponse = await fetch('/api/employees')
@@ -312,14 +249,14 @@ function Dashboard({ isCollapsed }) {
         const departmentName = e.department?.name || 'No Department'
         const scheduleInfo = e.primary_schedule || 'Not Assigned'
 
-        // Status logic: Use effective working day's data
-        // Note: If we're before working day start, effectiveDateStr is yesterday's date
-        // so todayRow will actually contain yesterday's data
+        // Status logic: Use effective working day\'s data
+        // Note: If we\'re before working day start, effectiveDateStr is yesterday\'s date
+        // so todayRow will actually contain yesterday\'s data
         let status = 'Absent'
         let relevantRow = null
 
         if (todayRow && todayRow.status) {
-          // Use the effective date's status
+          // Use the effective date\'s status
           status = todayRow.status
           relevantRow = {
             date: todayRow.date,
@@ -331,7 +268,7 @@ function Dashboard({ isCollapsed }) {
             status: todayRow.status,
           }
         } else if (yesterdayRow && yesterdayRow.status === 'Punch Out Missing') {
-          // If someone from the previous day hasn't clocked out, show that
+          // If someone from the previous day hasn\'t clocked out, show that
           status = 'Punch Out Missing'
           relevantRow = {
             date: yesterdayRow.date,
@@ -355,43 +292,46 @@ function Dashboard({ isCollapsed }) {
             overtimeHours: todayRow.overtimeHours,
             status: todayRow.status,
           } : null),
-          yesterdayReportData: yesterdayRow ? {
-            date: yesterdayRow.date,
-            inTime: yesterdayRow.inTime,
-            outTime: yesterdayRow.outTime,
-            durationHours: yesterdayRow.durationHours,
-            regularHours: yesterdayRow.regularHours,
-            overtimeHours: yesterdayRow.overtimeHours,
-            status: yesterdayRow.status,
-          } : null,
           employeeName,
           departmentName,
           scheduleInfo,
-          status: status
+          status
         }
       })
 
-      // Calculate metrics using API statuses (single source of truth!)
+      // Aggregate counts
       let presentCount = 0
       let lateCount = 0
       let absentCount = 0
       let onTimeCount = 0
+
       const lateList = []
       const absentList = []
       const onTimeList = []
       const presentList = []
 
+      // Detailed distribution map
+      const deptMap = new Map()
+
       for (const result of results) {
         if (!result) continue
-
         const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
 
-        // ✅ Use API status directly - no duplicate calculation logic!
-        const isActuallyPresent = ['On-Time', 'Late-In', 'Punch Out Missing', 'Present', 'Worked on Day Off', 'Out of Schedule'].includes(status)
+        // Department Status Grid Data
+        if (!deptMap.has(departmentName)) {
+          deptMap.set(departmentName, [])
+        }
+        deptMap.get(departmentName).push({
+          id: e.id,
+          name: employeeName,
+          employeeId: e.employee_id,
+          status: status,
+          inTime: r?.inTime,
+          schedule: scheduleInfo
+        })
 
-        if (isActuallyPresent) {
+        if (status === 'On-Time' || status === 'Late-In' || status === 'Punch Out Missing' || status === 'Present' || status === 'Worked on Day Off' || status === 'Out of Schedule') {
           presentCount++
-
           if (status === 'On-Time') {
             onTimeCount++
             onTimeList.push({
@@ -432,7 +372,7 @@ function Dashboard({ isCollapsed }) {
             schedule: scheduleInfo
           })
         }
-        // Ignore "Shift Not Started" from metrics
+        // Ignore \"Shift Not Started\" from metrics
       }
 
       // Calculate additional metrics using the same results array
@@ -470,11 +410,12 @@ function Dashboard({ isCollapsed }) {
         }
       }
 
-      // Round to 2 decimal places
-      totalOvertimeHours = Math.round(totalOvertimeHours * 100) / 100
-      totalWorkingHours = Math.round(totalWorkingHours * 100) / 100
+      // Only update state if the user hasn't switched dates in the meantime
+      if (toYMD(selectedDate) !== requestDateStr) {
+        console.log(`[Metrics] Ignoring stale result for ${requestDateStr}, current date is ${toYMD(selectedDate)}`)
+        return
+      }
 
-      setTotalEmployees(employees.length)
       setMetrics({
         present: presentCount,
         late: lateCount,
@@ -482,40 +423,22 @@ function Dashboard({ isCollapsed }) {
         onTime: onTimeCount,
         totalOvertimeHours,
         totalWorkingHours,
-        averageWorkHours: presentCount > 0 ? Math.round((totalWorkingHours / presentCount) * 10) / 10 : 0,
+        averageWorkHours: presentCount > 0 ? (totalWorkingHours / presentCount).toFixed(1) : 0,
         attendanceRate: employees.length > 0 ? Math.round((presentCount / employees.length) * 100) : 0,
         punchOutMissing: punchOutMissingCount
       })
+
+      setTotalEmployees(employees.length)
       setLateEmployees(lateList)
       setAbsentEmployees(absentList)
       setOnTimeEmployees(onTimeList)
       setPresentEmployees(presentList)
       setPunchOutMissingEmployees(punchOutMissingList)
 
-      // Build department-wise employee list - SIMPLIFIED!
-      // ✅ REUSE the same API results - single source of truth!
-      const deptMap = new Map()
-
-      for (const result of results) {
-        if (!result) continue
-
+      // Safe update for department list
+      for (const [departmentName, employees] of deptMap.entries()) {
         try {
-          const { status, reportData: r, employeeName, departmentName, scheduleInfo, employee: e } = result
-
-          // Group by department
-          if (!deptMap.has(departmentName)) {
-            deptMap.set(departmentName, [])
-          }
-
-          // Add employee to department list with API status
-          deptMap.get(departmentName).push({
-            id: e.id,
-            name: employeeName,
-            employeeId: e.employee_id || 'N/A',
-            status: status, // ← FROM API! Same calculation as status badges ✅
-            inTime: r?.inTime || null,
-            schedule: scheduleInfo
-          })
+          deptMap.set(departmentName, employees.sort((a, b) => (a.name || '').localeCompare(b.name || '')))
         } catch (err) {
           console.error(`[DeptList] Error adding ${employeeName} to department list:`, err)
         }
@@ -544,11 +467,60 @@ function Dashboard({ isCollapsed }) {
         showError(e.message || 'Failed to compute overview', 'Metrics error')
       }
     } finally {
-      setLoadingMetrics(false)
+      if (!background) setLoadingMetrics(false)
     }
-  }, [selectedDate])
+  }, [selectedDate, settings])
 
-  const fetchPendingLeaves = async () => {
+  // Refresh data from Supabase (clears reports cache)
+  const handleSync = useCallback(async (silent = false) => {
+    // Prevent multiple simultaneous refreshes
+    if (syncingRef.current) {
+      return
+    }
+
+    let notificationId = null
+    try {
+      syncingRef.current = true
+      setSyncing(true)
+
+      if (!silent) {
+        notificationId = showLoading('Refreshing dashboard data...', 'Update In Progress', { id: 'refreshing' })
+      }
+
+      const response = await fetch('/api/sync?refresh_only=true', { method: 'GET' })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Refresh failed')
+      }
+
+      setLastSyncTime(new Date())
+
+      if (!silent && notificationId) {
+        updateNotification('refreshing', result.message || 'Data updated successfully', 'Success', 'success', { autoClose: 2000 })
+      }
+
+      // Refresh logs and metrics
+      if (logsSearchQuery.trim() && allLogs.length > 0) {
+        await fetchLogs(1, logsPerPage, true)
+      } else {
+        await fetchLogs(currentPage, logsPerPage, false)
+      }
+      await fetchMetrics()
+    } catch (error) {
+      console.error('[Refresh] Error:', error)
+      if (!silent && notificationId) {
+        updateNotification('refreshing', error.message || 'Failed to refresh data', 'Update Error', 'error', { autoClose: 4000 })
+      }
+    } finally {
+      setSyncing(false)
+      syncingRef.current = false
+    }
+  }, [currentPage, logsPerPage, logsSearchQuery, allLogs.length, selectedDate, fetchLogs, fetchMetrics])
+
+
+
+  const fetchPendingLeaves = useCallback(async () => {
     try {
       const res = await fetch('/api/hr/leave-requests?status=pending')
       const data = await res.json()
@@ -556,7 +528,7 @@ function Dashboard({ isCollapsed }) {
     } catch (error) {
       console.error('Failed to fetch pending leaves:', error)
     }
-  }
+  }, [])
 
   // Fetch company settings on mount and initialize date
   useEffect(() => {
@@ -567,23 +539,25 @@ function Dashboard({ isCollapsed }) {
         const enabled = result.data?.working_day_enabled === 'true' || result.data?.working_day_enabled === true
         const startTime = result.data?.working_day_start_time || '09:00'
 
-        setSettings({
-          workingDayEnabled: enabled,
-          workingDayStartTime: startTime
-        })
-        setSettingsLoaded(true)
-
-        // Use universal logic to initialize the default date
+        // 1. First determine the effective date
+        let effectiveDate = new Date()
         if (enabled) {
           const effectiveDayStr = getEffectiveWorkingDayDate(enabled, startTime)
           const todayCalendarStr = getPakistanNow().toISOString().slice(0, 10)
 
           if (effectiveDayStr !== todayCalendarStr) {
-            console.log(`[INIT] Working day is active, defaulting to: ${effectiveDayStr}`)
-            const effectiveDate = new Date(effectiveDayStr + 'T00:00:00Z')
-            setSelectedDate(effectiveDate)
+            console.log(`[INIT] Working day transition active. Effective Day: ${effectiveDayStr}`)
+            effectiveDate = new Date(effectiveDayStr + 'T00:00:00Z')
           }
         }
+
+        // 2. Set both state variables in one go to prevent partial render fetchings
+        setSelectedDate(effectiveDate)
+        setSettings({
+          workingDayEnabled: enabled,
+          workingDayStartTime: startTime
+        })
+        setSettingsLoaded(true)
       } catch (e) {
         console.error('Failed to load settings:', e)
         setSettingsLoaded(true)
@@ -621,10 +595,11 @@ function Dashboard({ isCollapsed }) {
 
   // Initial data load
   useEffect(() => {
+    if (!settingsLoaded) return
     fetchLogs()
     fetchMetrics()
     fetchPendingLeaves()
-  }, [fetchMetrics])
+  }, [fetchLogs, fetchMetrics, fetchPendingLeaves, settingsLoaded])
 
   // Fetch all logs when search query is entered
   useEffect(() => {
@@ -697,38 +672,48 @@ function Dashboard({ isCollapsed }) {
   // Filter logs based on search query
   // Use allLogs if available (when searching), otherwise use logs (normal pagination)
   const logsToFilter = allLogs.length > 0 ? allLogs : logs
-  const filteredLogs = logsToFilter.filter((log) => {
-    if (!logsSearchQuery.trim()) return true
+  // Memoize filtered logs to prevent re-filtering on every render
+  const filteredLogs = useMemo(() => {
+    const logsToFilter = allLogs.length > 0 ? allLogs : logs
+    if (!logsSearchQuery.trim()) return logsToFilter
 
     const query = logsSearchQuery.toLowerCase()
-    const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
-    const employeeName = getEmployeeName(log.employees).toLowerCase()
-    const zkUserId = String(log.zk_user_id || '').toLowerCase()
-    const department = String(log.department_name || '').toLowerCase()
-    const punchText = String(log.punch_text || '').toLowerCase()
-    const statusText = String(log.status_text || '').toLowerCase()
-    const logTime = formatDateTime(log.log_time).toLowerCase()
-    const syncedAt = formatDateTime(log.synced_at).toLowerCase()
+    return logsToFilter.filter((log) => {
+      const employeeName = getEmployeeName(log.employees).toLowerCase()
+      const zkUserId = String(log.zk_user_id || '').toLowerCase()
+      const department = String(log.department_name || '').toLowerCase()
+      const punchText = String(log.punch_text || '').toLowerCase()
+      const statusText = String(log.status_text || '').toLowerCase()
+      const logTime = formatDateTime(log.log_time).toLowerCase()
+      const syncedAt = formatDateTime(log.synced_at).toLowerCase()
 
-    return (
-      employeeName.includes(query) ||
-      zkUserId.includes(query) ||
-      department.includes(query) ||
-      punchText.includes(query) ||
-      statusText.includes(query) ||
-      logTime.includes(query) ||
-      syncedAt.includes(query)
-    )
-  })
+      return (
+        employeeName.includes(query) ||
+        zkUserId.includes(query) ||
+        department.includes(query) ||
+        punchText.includes(query) ||
+        statusText.includes(query) ||
+        logTime.includes(query) ||
+        syncedAt.includes(query)
+      )
+    })
+  }, [allLogs, logs, logsSearchQuery])
 
   // Client-side pagination for filtered results
-  const filteredTotalPages = Math.max(1, Math.ceil(filteredLogs.length / logsPerPage))
-  const paginatedFilteredLogs = logsSearchQuery.trim()
-    ? filteredLogs.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage)
-    : filteredLogs
+  const filteredTotalPages = useMemo(() =>
+    Math.max(1, Math.ceil(filteredLogs.length / logsPerPage)),
+    [filteredLogs]
+  )
 
-  // Table rows for logs
-  const rows = paginatedFilteredLogs.map((log) => {
+  const paginatedFilteredLogs = useMemo(() =>
+    logsSearchQuery.trim()
+      ? filteredLogs.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage)
+      : filteredLogs,
+    [filteredLogs, currentPage, logsSearchQuery]
+  )
+
+  // Table rows for logs - memoized to prevent re-drawing the whole table
+  const rows = useMemo(() => paginatedFilteredLogs.map((log) => {
     const employee = Array.isArray(log.employees) ? log.employees[0] : log.employees
     const employeeId = employee?.id
     const employeeName = getEmployeeName(log.employees)
@@ -752,16 +737,16 @@ function Dashboard({ isCollapsed }) {
         <Table.Td>{formatDateTime(log.synced_at)}</Table.Td>
       </Table.Tr>
     )
-  })
+  }), [paginatedFilteredLogs])
 
-  // Derived filtered department data
-  const filteredDepartmentEmployees = departmentEmployees.map(dept => ({
+  // Derived filtered department data - memoized
+  const filteredDepartmentEmployees = useMemo(() => departmentEmployees.map(dept => ({
     ...dept,
     employees: dept.employees.filter(emp =>
       emp.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
       dept.department.toLowerCase().includes(globalSearchQuery.toLowerCase())
     )
-  })).filter(dept => dept.employees.length > 0)
+  })).filter(dept => dept.employees.length > 0), [departmentEmployees, globalSearchQuery])
 
   // Auto-expand departments when searching
   useEffect(() => {
@@ -850,7 +835,7 @@ function Dashboard({ isCollapsed }) {
         </Stack>
 
         {/* Attendance Intelligence Grid */}
-        <Grid gutter="xl" mb={40}>
+        <Grid gutter="xl" mb={40} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' }}>
           {/* Main Attendance Pulse */}
           <Grid.Col span={{ base: 12, md: 8 }}>
             <Paper withBorder p="xl" radius="lg" style={{
@@ -1058,7 +1043,7 @@ function Dashboard({ isCollapsed }) {
             <UniversalTabs.Tab value="logs">Recent Attendance Logs</UniversalTabs.Tab>
           </UniversalTabs.List>
 
-          <UniversalTabs.Panel value="status" pt="xl">
+          <UniversalTabs.Panel value="status" pt="xl" style={{ contentVisibility: 'auto', containIntrinsicSize: '0 800px' }}>
             <Stack gap="lg">
               <Group justify="space-between" align="center" mb="xs">
                 <div>

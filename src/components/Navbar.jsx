@@ -23,7 +23,7 @@ export function Navbar({ onNavigate, isCollapsed, toggleCollapse }) {
     { icon: IconUsers, label: 'Employees', href: '/employees/manage' },
     { icon: IconBuilding, label: 'Departments', href: '/departments' },
     { icon: IconDeviceDesktop, label: 'Schedules', href: '/device-config' },
-    { icon: IconReport, label: 'Payroll Reports', href: '/payroll-reports' },
+    { icon: IconReport, label: 'Attendance Outliers', href: '/payroll-reports' },
     { icon: IconUserPlus, label: 'Enrollment', href: '/employee-enrollment' },
     { icon: IconCalendar, label: 'Leave Management', href: '/leave-management' },
     { icon: IconDownload, label: 'Bridge Installer', href: '/bridge-installer' },

@@ -24,7 +24,7 @@ export async function GET(req) {
     // Fetch all active employees
     const { data: employees, error: empErr } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, employee_id, department_id, department:departments(id, name)')
+      .select('id, first_name, last_name, employee_id, department_id, individual_tz_1, individual_tz_2, individual_tz_3, department:departments(id, name)')
       .eq('is_active', true)
 
     if (empErr) {
@@ -53,113 +53,126 @@ export async function GET(req) {
       })
     }
 
+    // STEP 1.5: Resolved employee schedule names from the source (Time Zones table)
+    // This implements the "Universal Architecture" as requested by the user
+    const { data: allSchedules } = await supabase.from('schedules').select('*')
+    const { data: allTimeZones } = await supabase.from('time_zones').select('id, name')
+
+    const tzNameMap = new Map(allTimeZones?.map(tz => [tz.id, tz.name]) || [])
+    const scheduleMap = new Map(allSchedules?.map(s => [s.department_id, s]) || [])
+
+    const getResolvedShiftName = (emp) => {
+      // Priority: Individual TZ 1 > Dept TZ 1 > fallback
+      const tzId = emp.individual_tz_1 || scheduleMap.get(emp.department_id)?.tz_id_1
+      return tzNameMap.get(tzId) || 'Standard'
+    }
+
     // STEP 2: Determine which employees need calculation
     const missingEmployeeIds = employees
-      .filter(emp => !cachedMap.has(emp.id))
+      .filter(emp => {
+        const cached = cachedMap.get(emp.id)
+        if (!cached) return true
+
+        // If record exists but is missing shift metadata (from old system), force re-calc
+        const hasShiftInfo = (cached.shiftStartTime || cached.shift_start_time) && (cached.shiftName || cached.shift_name)
+        const isWorkingStatus = ['Late-In', 'On-Time', 'Present', 'Half Day', 'Out of Schedule'].includes(cached.status)
+
+        if (isWorkingStatus && !hasShiftInfo) return true
+
+        return false
+      })
       .map(emp => emp.id)
 
     console.log(`[batch] Date ${dateStr}: ${cachedMap.size} cached, ${missingEmployeeIds.length} need calculation`)
 
-    // STEP 3: Return cached results immediately, calculate missing ones in background
-    // This allows the dashboard to load instantly with cached data
-    
-    // Start background calculation for missing employees (don't wait for it)
+    // STEP 3: Return cached results with calculated data
+    // We now await the calculations to ensure the dashboard never shows empty "0" stats.
     if (missingEmployeeIds.length > 0) {
-      console.log(`[batch] Starting background calculation for ${missingEmployeeIds.length} missing employees for ${dateStr}`)
-      
-      // Don't await this - let it run in background
-      // Process in chunks to avoid overwhelming the system
-      const chunkSize = 10
-      const chunks = []
-      for (let i = 0; i < missingEmployeeIds.length; i += chunkSize) {
-        chunks.push(missingEmployeeIds.slice(i, i + chunkSize))
-      }
+      console.log(`[batch] Calculating ${missingEmployeeIds.length} missing employees for ${dateStr} synchronously`)
 
-      // Run calculations in background (fire and forget)
-      Promise.all(chunks.map(async (chunk) => {
-        const promises = chunk.map(async (employeeId) => {
-          try {
-            // Directly call the calculation function (no HTTP overhead!)
-            const results = await calculateForDateRange(employeeId, dateStr, dateStr)
-            const dayData = results.find(d => d.date === dateStr)
-            
-            if (dayData && dayData.status !== 'Employee Not Found' && dayData.status !== 'No Schedule Assigned') {
-              // Store in cache for future use
-              try {
-                const { error: insertError } = await supabase
-                  .from('daily_attendance_calculations')
-                  .upsert({
-                    employee_id: employeeId,
-                    date: dayData.date,
-                    status: dayData.status,
-                    in_time: dayData.inTime,
-                    out_time: dayData.outTime,
-                    duration_hours: dayData.durationHours,
-                    regular_hours: dayData.regularHours,
-                    overtime_hours: dayData.overtimeHours,
-                    last_calculated_at: new Date().toISOString(),
-                  }, {
-                    onConflict: 'employee_id,date',
-                  })
-                
-                if (insertError) {
-                  console.warn(`[batch] Cache insert error for ${employeeId}:`, insertError)
-                } else {
-                  console.log(`[batch] Background: Cached calculation for employee ${employeeId} on ${dateStr}`)
-                }
-              } catch (e) {
-                console.warn(`[batch] Cache insert exception for ${employeeId}:`, e)
-              }
+      // Process all missing employees in parallel
+      const calculationPromises = missingEmployeeIds.map(async (employeeId) => {
+        try {
+          const results = await calculateForDateRange(employeeId, dateStr, dateStr)
+          const dayData = results.find(d => d.date === dateStr)
+
+          if (dayData && dayData.status !== 'Employee Not Found' && dayData.status !== 'No Schedule Assigned') {
+            // Store in cache
+            const { data: upsertData, error: insertError } = await supabase
+              .from('daily_attendance_calculations')
+              .upsert({
+                employee_id: employeeId,
+                date: dayData.date,
+                status: dayData.status,
+                in_time: dayData.inTime,
+                out_time: dayData.outTime,
+                duration_hours: dayData.durationHours,
+                regular_hours: dayData.regularHours,
+                overtime_hours: dayData.overtimeHours,
+                shift_start_time: dayData.shiftStartTime,
+                shift_end_time: dayData.shiftEndTime,
+                shift_name: dayData.shiftName,
+                last_calculated_at: new Date().toISOString(),
+              }, {
+                onConflict: 'employee_id,date',
+              })
+              .select()
+
+            if (insertError) {
+              console.warn(`[batch] Cache insert error for ${employeeId}:`, insertError)
             }
-          } catch (error) {
-            console.error(`[batch] Error calculating for employee ${employeeId}:`, error)
+
+            // Return the calculated data to be included in the response
+            return {
+              employee_id: employeeId,
+              status: dayData.status,
+              inTime: dayData.inTime,
+              outTime: dayData.outTime,
+              durationHours: Number(dayData.durationHours) || 0,
+              regularHours: Number(dayData.regularHours) || 0,
+              overtimeHours: Number(dayData.overtimeHours) || 0,
+              shiftStartTime: dayData.shiftStartTime,
+              shiftEndTime: dayData.shiftEndTime,
+              shiftName: dayData.shiftName,
+            }
           }
-        })
-        
-        await Promise.all(promises)
-      })).catch(err => {
-        console.error('[batch] Background calculation error:', err)
+        } catch (error) {
+          console.error(`[batch] Error calculating for employee ${employeeId}:`, error)
+        }
+        return null
+      })
+
+      const newlyCalculatedResults = await Promise.all(calculationPromises)
+      // Merge newly calculated results into our results source
+      newlyCalculatedResults.forEach(res => {
+        if (res) {
+          cachedMap.set(res.employee_id, res)
+        }
       })
     }
 
-    // STEP 4: Return results immediately with cached data
-    // Missing employees will show as "Absent" (which is likely correct if no cache exists)
+    // STEP 4: Return full results
     const allResults = employees.map(emp => {
-      const cached = cachedMap.get(emp.id)
+      const result = cachedMap.get(emp.id)
 
-      if (cached) {
-        // Return cached data immediately
-        return {
-          employee_id: emp.id,
-          employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
-          department: emp.department?.name || 'No Department',
-          date: cached.date,
-          status: cached.status,
-          inTime: cached.in_time,
-          outTime: cached.out_time,
-          durationHours: Number(cached.duration_hours) || 0,
-          regularHours: Number(cached.regular_hours) || 0,
-          overtimeHours: Number(cached.overtime_hours) || 0,
-        }
-      } else {
-        // No cache available - return "Absent" immediately
-        // Background calculation will update cache for next request
-        return {
-          employee_id: emp.id,
-          employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
-          department: emp.department?.name || 'No Department',
-          date: dateStr,
-          status: 'Absent',
-          inTime: null,
-          outTime: null,
-          durationHours: 0,
-          regularHours: 0,
-          overtimeHours: 0,
-        }
+      return {
+        employee_id: emp.id,
+        employee_name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.employee_id || 'Unknown',
+        department: emp.department?.name || 'No Department',
+        date: dateStr,
+        status: result?.status || 'Absent',
+        inTime: result?.inTime || result?.in_time || null,
+        outTime: result?.outTime || result?.out_time || null,
+        durationHours: Number(result?.durationHours || result?.duration_hours) || 0,
+        regularHours: Number(result?.regularHours || result?.regular_hours) || 0,
+        overtimeHours: Number(result?.overtimeHours || result?.overtime_hours) || 0,
+        shiftStartTime: result?.shiftStartTime || result?.shift_start_time || null,
+        shiftEndTime: result?.shiftEndTime || result?.shift_end_time || null,
+        shiftName: result?.shiftName || result?.shift_name || getResolvedShiftName(emp),
       }
     })
 
-    console.log(`[batch] Returning ${allResults.length} results immediately for date ${dateStr} (${cachedMap.size} from cache, ${missingEmployeeIds.length} defaulted to Absent, calculating in background)`)
+    console.log(`[batch] Returning ${allResults.length} results for date ${dateStr} (Freshly calculated: ${missingEmployeeIds.length})`)
 
     return NextResponse.json({
       success: true,

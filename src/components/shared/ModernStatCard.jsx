@@ -1,8 +1,9 @@
 'use client'
 
 import { Paper, Text, Group, Badge } from '@mantine/core'
+import { memo } from 'react'
 
-export function ModernStatCard({
+export const ModernStatCard = memo(({
     title,
     value,
     badgeLabel,
@@ -10,7 +11,7 @@ export function ModernStatCard({
     color = 'blue',
     borderPosition = 'right',
     children
-}) {
+}) => {
     return (
         <Paper
             p="lg"
@@ -23,7 +24,8 @@ export function ModernStatCard({
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                transform: 'translateZ(0)'
             }}
         >
             <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={0.5}>{title}</Text>
@@ -44,4 +46,6 @@ export function ModernStatCard({
             )}
         </Paper>
     )
-}
+})
+
+ModernStatCard.displayName = 'ModernStatCard'

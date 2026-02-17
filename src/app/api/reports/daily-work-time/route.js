@@ -122,7 +122,8 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
   const scheduleStart = new Date(startDate.getTime() - dayMs) // One day before startDate
 
   // Handle multiple schedules: schedule can be { tz_string } or { tz_strings: [...] }
-  const tzStrings = schedule.tz_strings || (schedule.tz_string ? [schedule.tz_string] : [])
+  const tzConfigs = schedule.tz_configs || []
+  const tzStrings = tzConfigs.map(c => c.tz_string)
 
   if (tzStrings.length === 0) {
     return results
@@ -133,7 +134,8 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
     const weekday = d.getUTCDay()
 
     // Check each assigned schedule for this day
-    for (const tzString of tzStrings) {
+    for (const config of tzConfigs) {
+      const tzString = config.tz_string
       const seg = segmentFromTz(tzString, weekday)
       const shift = getExpectedShift(seg)
 
@@ -229,7 +231,9 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
             utcDate: utcStartDate, // Use the actual UTC start date
             is_half_day: false, // Regular shifts are not half days
             is_day_off: isDayOff, // Track if this was a scheduled day off
-            tz_string: tzString, // Track which schedule this shift belongs to
+            is_day_off: isDayOff, // Track if this was a scheduled day off
+            tz_string: config.tz_string, // Track which schedule this shift belongs to
+            name: config.name, // Track shift name
             dateKey: groupingDate, // FIXED: Use working day date for grouping
             utcEndDayOffset: utcEndDayOffset, // Track end day offset for proper window calculation
           })
@@ -605,8 +609,8 @@ const matchPunchesToShifts = async (allLogs, startDate, endDate, schedule, grace
         console.log(`  [${idx}] ${new Date(p.t).toISOString()}`)
       })
 
-      // Process the shift - use the specific schedule's tz_string for this shift
-      const shiftSchedule = { employee_id: schedule.employee_id, tz_string: shiftInfo.tz_string }
+      // Process the shift - use the specific schedule's tz_string and name for this shift
+      const shiftSchedule = { employee_id: schedule.employee_id, tz_string: shiftInfo.tz_string, name: shiftInfo.name }
       const processedShift = processShift(sortedPunches, shiftInfo.utcDate, shiftSchedule, graceMinutes, leaveDates, pakistanDateStr, shiftInfo.is_half_day || false, shiftInfo.is_day_off || false)
 
       // Use working day date for display if enabled
@@ -708,6 +712,7 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       regularHours: 0,
       overtimeHours: 0,
       status: 'Absent',
+      shiftName: schedule?.name || 'Shift',
     }
   }
 
@@ -915,6 +920,9 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       regularHours: Math.round(durationHours * 100) / 100,
       overtimeHours: 0,
       status: forgotPunchOut ? 'Punch Out Missing' : 'Present',
+      shiftStartTime: null,
+      shiftEndTime: null,
+      shiftName: schedule?.name || 'Standard',
     }
   }
 
@@ -928,6 +936,9 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
       regularHours: Math.round(durationHours * 100) / 100,
       overtimeHours: 0,
       status: forgotPunchOut ? 'Punch Out Missing' : 'Worked on Day Off',
+      shiftStartTime: null,
+      shiftEndTime: null,
+      shiftName: schedule?.name || 'Standard',
     }
   }
 
@@ -938,6 +949,8 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
   let status = 'Present'
   let regularHours = durationHours
   let overtimeHours = 0
+  let expectedStart = null
+  let expectedEnd = null
 
   if (shift) {
     const startClock = parseHHMM(shift.startHHMM)
@@ -956,8 +969,8 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
     const utcEndClock = { h: utcEndHour, m: endClock.m }
 
     // Use shiftDateObj (the assigned shift date) to calculate shift times in UTC
-    let expectedStart = isoAt(shiftDateObj, utcStartClock)
-    let expectedEnd = isoAt(shiftDateObj, utcEndClock)
+    expectedStart = isoAt(shiftDateObj, utcStartClock)
+    expectedEnd = isoAt(shiftDateObj, utcEndClock)
 
     if (shift.crossesMidnight) {
       expectedEnd = isoAt(new Date(shiftDateObj.getTime() + 24 * 60 * 60 * 1000), utcEndClock)
@@ -1038,6 +1051,9 @@ const processShift = (punches, shiftDate, schedule, graceMinutes, leaveDates, pa
     regularHours: Math.round(regularHours * 100) / 100,
     overtimeHours: Math.round(overtimeHours * 100) / 100,
     status,
+    shiftStartTime: expectedStart ? expectedStart.toISOString() : null,
+    shiftEndTime: expectedEnd ? expectedEnd.toISOString() : null,
+    shiftName: schedule?.name || 'Standard',
   }
 }
 
@@ -1050,6 +1066,9 @@ export const formatCachedResult = (cached) => ({
   regularHours: Number(cached.regular_hours) || 0,
   overtimeHours: Number(cached.overtime_hours) || 0,
   status: cached.status,
+  shiftStartTime: cached.shift_start_time || null,
+  shiftEndTime: cached.shift_end_time || null,
+  shiftName: cached.shift_name || 'Standard',
 })
 
 // Helper function to get date range as array of date strings
@@ -1126,7 +1145,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
   // Fetch ALL assigned time zones with their buffer times
   const { data: timeZones, error: tzErr } = await supabase
     .from('time_zones')
-    .select('id, tz_string, buffer_time_minutes')
+    .select('id, name, tz_string, buffer_time_minutes')
     .in('id', assignedTzIds)
 
   if (tzErr) throw new Error(tzErr.message)
@@ -1139,6 +1158,7 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
   if (timeZones && timeZones.length > 0) {
     for (const tz of timeZones) {
       tzMap.set(tz.id, {
+        name: tz.name || 'Shift',
         tz_string: tz.tz_string || null,
         buffer_time_minutes: tz.buffer_time_minutes != null ? Number(tz.buffer_time_minutes) : null
       })
@@ -1239,7 +1259,10 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
     allLogs,
     startDate,
     endDate,
-    { employee_id: employeeId, tz_strings: tzStrings }, // Pass all schedules
+    {
+      employee_id: employeeId,
+      tz_configs: Array.from(tzMap.values()).filter(v => v.tz_string) // Pass full configs
+    },
     graceMinutes,
     workingDayEnabled,
     workingDayStartTime
@@ -1335,6 +1358,9 @@ export async function GET(req) {
           duration_hours: result.durationHours,
           regular_hours: result.regularHours,
           overtime_hours: result.overtimeHours,
+          shift_start_time: result.shiftStartTime,
+          shift_end_time: result.shiftEndTime,
+          shift_name: result.shiftName,
           last_calculated_at: new Date().toISOString(),
         }))
 
@@ -1358,7 +1384,7 @@ export async function GET(req) {
       }
     }
 
-    // STEP 6: Combine cached + newly calculated results
+    // STEP 7: Combine results
     const allResults = [
       ...cachedResults.map(formatCachedResult),
       ...calculatedResults

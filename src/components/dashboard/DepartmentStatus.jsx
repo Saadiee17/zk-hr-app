@@ -14,29 +14,26 @@ import {
     Progress,
     Avatar,
     Box,
-    Tooltip,
     useMantineTheme,
     Button
 } from '@mantine/core'
+import { memo } from 'react'
 import {
     IconChevronUp,
-    IconChevronDown,
     IconUserCheck,
     IconUserX,
     IconClock,
     IconAlertCircle,
-    IconBriefcase,
-    IconArrowRight
+    IconBriefcase
 } from '@tabler/icons-react'
 import Link from 'next/link'
 import { formatUTC12HourTime } from '@/utils/dateFormatting'
 
-export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
+export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
     const theme = useMantineTheme()
     const { present, late, absent, total } = dept.summary
     const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0
 
-    // Custom status color logic to match the app's theme but more "premium"
     const getStatusInfo = (status) => {
         switch (status) {
             case 'On-Time':
@@ -67,13 +64,13 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
             p={0}
             mb="md"
             style={{
-                transition: 'all 0.3s ease',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                 border: isExpanded ? `1px solid ${theme.colors.blue[3]}` : '1px solid #f1f3f5',
-                boxShadow: isExpanded ? '0 12px 30px rgba(0,0,0,0.08)' : '0 4px 6px rgba(0,0,0,0.02)',
-                overflow: 'hidden'
+                boxShadow: isExpanded ? '0 12px 30px rgba(0,0,0,0.08)' : '0 4px 6px rgba(0,0,0,0.01)',
+                overflow: 'hidden',
+                contain: 'content'
             }}
         >
-            {/* Header section */}
             <Box
                 px="xl"
                 py="lg"
@@ -86,7 +83,6 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
             >
                 <Group justify="space-between" align="center" wrap="nowrap">
                     <Group gap="md" wrap="nowrap">
-                        {/* Minimal Department Indicator */}
                         <ThemeIcon
                             size={34}
                             radius="md"
@@ -113,7 +109,6 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
                         </div>
                     </Group>
 
-                    {/* Quick Stats Grid - Visible when collapsed */}
                     {!isExpanded && (
                         <Group gap="lg" visibleFrom="md" align="center">
                             <Group gap={8} align="center">
@@ -147,7 +142,6 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
                 </Group>
             </Box>
 
-            {/* Expanded Table Section */}
             <Collapse in={isExpanded}>
                 <Box p="xl" style={{ background: 'white' }}>
                     <Divider mb="xl" label={<Text size="xs" fw={700} c="dimmed">DEPARTMENT ROSTER</Text>} labelPosition="left" />
@@ -165,13 +159,13 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
                         <Table.Tbody>
                             {dept.employees.map((emp) => {
                                 const statusInfo = getStatusInfo(emp.status)
-                                const initials = emp.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+                                const empInitials = emp.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 
                                 return (
                                     <Table.Tr
                                         key={emp.id}
                                         style={{
-                                            transition: 'all 0.2s',
+                                            transition: 'background-color 0.15s',
                                         }}
                                     >
                                         <Table.Td style={{ border: 'none' }}>
@@ -183,7 +177,7 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
                                                     variant="light"
                                                     fw={700}
                                                 >
-                                                    {initials}
+                                                    {empInitials}
                                                 </Avatar>
                                                 <div>
                                                     <Text fw={700} size="sm" style={{ lineHeight: 1.2 }}>{emp.name}</Text>
@@ -249,9 +243,11 @@ export function DepartmentStatusCard({ dept, isExpanded, onToggle }) {
             </Collapse>
         </Card>
     )
-}
+})
 
-export function DepartmentStatusGrid({ departmentData, expandedDepartments, setExpandedDepartments }) {
+DepartmentStatusCard.displayName = 'DepartmentStatusCard'
+
+export const DepartmentStatusGrid = memo(({ departmentData, expandedDepartments, setExpandedDepartments }) => {
     if (!departmentData || departmentData.length === 0) return null
 
     return (
@@ -271,4 +267,6 @@ export function DepartmentStatusGrid({ departmentData, expandedDepartments, setE
             ))}
         </Stack>
     )
-}
+})
+
+DepartmentStatusGrid.displayName = 'DepartmentStatusGrid'

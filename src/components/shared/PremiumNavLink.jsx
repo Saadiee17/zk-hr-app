@@ -1,8 +1,8 @@
-'use client'
 import { UnstyledButton, Group, Text, ThemeIcon, useMantineTheme, useComputedColorScheme } from '@mantine/core'
+import { memo } from 'react'
 import Link from 'next/link'
 
-export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color = 'blue', collapsed }) {
+export const PremiumNavLink = memo(({ icon: Icon, label, active, href, onClick, color = 'blue', collapsed }) => {
     const theme = useMantineTheme();
     const computedColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
     const isDark = computedColorScheme === 'dark';
@@ -25,23 +25,25 @@ export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color
                 color: active
                     ? `var(--mantine-color-${color}-filled)`
                     : 'var(--mantine-color-text)',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, background-color 0.2s ease',
                 marginBottom: '4px',
                 opacity: active ? 1 : 0.8,
                 boxShadow: active ? `0 4px 12px ${isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)'}` : 'none',
+                transform: 'translateZ(0)', // Force GPU
+                willChange: 'transform, opacity'
             }}
             onMouseEnter={(e) => {
                 if (!active) {
                     e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
                     e.currentTarget.style.opacity = '1'
-                    e.currentTarget.style.transform = 'scale(1.02) translateX(4px)'
+                    e.currentTarget.style.transform = 'scale(1.02) translateX(4px) translateZ(0)'
                 }
             }}
             onMouseLeave={(e) => {
                 if (!active) {
                     e.currentTarget.style.backgroundColor = 'transparent'
                     e.currentTarget.style.opacity = '0.8'
-                    e.currentTarget.style.transform = 'scale(1) translateX(0)'
+                    e.currentTarget.style.transform = 'scale(1) translateX(0) translateZ(0)'
                 }
             }}
         >
@@ -75,4 +77,6 @@ export function PremiumNavLink({ icon: Icon, label, active, href, onClick, color
             </Group>
         </UnstyledButton>
     )
-}
+})
+
+PremiumNavLink.displayName = 'PremiumNavLink'

@@ -51,15 +51,15 @@ export function AppShellWrapper({ children }) {
             position: 'sticky',
             top: 0,
             backgroundColor: isDark
-              ? 'rgba(26, 27, 30, 0.8)'
-              : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+              ? 'rgba(26, 27, 30, 0.98)'
+              : 'rgba(255, 255, 255, 0.98)',
+            backdropFilter: 'blur(6px)', // Reduced from 12px for better scroll performance
+            WebkitBackdropFilter: 'blur(6px)',
             borderRight: isDark
               ? '1px solid rgba(255, 255, 255, 0.05)'
               : '1px solid rgba(0, 0, 0, 0.05)',
             boxShadow: '0 0 20px rgba(0,0,0,0.02)',
-            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease',
             overflowX: 'hidden',
             overflowY: 'auto',
             flexShrink: 0,
@@ -67,6 +67,8 @@ export function AppShellWrapper({ children }) {
             display: 'flex',
             flexDirection: 'column',
             zIndex: 100,
+            transform: 'translateZ(0)', // Force GPU layer
+            contain: 'layout paint'
           }}
         >
           <NavComponent

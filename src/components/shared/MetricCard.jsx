@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, Stack, Text, Group } from '@mantine/core'
+import { memo } from 'react'
 
 /**
  * MetricCard - Reusable metric card component for dashboard
@@ -13,7 +14,7 @@ import { Card, Stack, Text, Group } from '@mantine/core'
  * @param {Function} props.onClick - Click handler (optional)
  * @param {string} props.size - Size of the value text ('sm' | 'md' | 'lg', default: 'lg')
  */
-export function MetricCard({
+export const MetricCard = memo(({
   value,
   label,
   description,
@@ -22,7 +23,7 @@ export function MetricCard({
   onClick,
   size = 'lg',
   icon: Icon
-}) {
+}) => {
   const sizeMap = {
     sm: 24,
     md: 32,
@@ -39,27 +40,27 @@ export function MetricCard({
       withBorder={false}
       style={{
         cursor: isClickable ? 'pointer' : 'default',
-        transition: 'all 0.3s ease',
-        background: 'rgba(255, 255, 255, 0.7)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.3)',
-        boxShadow: '0 4px 24px -1px rgba(0, 0, 0, 0.05)',
+        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease',
+        background: 'rgba(255, 255, 255, 0.98)', // Significantly faster than backdrop-filter
+        border: '1px solid #f1f3f5',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.02)',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        transform: 'translateZ(0)', // GPU promotion
+        willChange: isClickable ? 'transform, box-shadow' : 'auto'
       }}
       onMouseEnter={(e) => {
         if (isClickable) {
-          e.currentTarget.style.transform = 'translateY(-4px)'
-          e.currentTarget.style.boxShadow = '0 20px 40px -4px rgba(0, 0, 0, 0.1)'
+          e.currentTarget.style.transform = 'translateY(-4px) translateZ(0)'
+          e.currentTarget.style.boxShadow = '0 12px 24px -2px rgba(0, 0, 0, 0.08)'
         }
       }}
       onMouseLeave={(e) => {
         if (isClickable) {
-          e.currentTarget.style.transform = 'translateY(0)'
-          e.currentTarget.style.boxShadow = '0 4px 24px -1px rgba(0, 0, 0, 0.05)'
+          e.currentTarget.style.transform = 'translateY(0) translateZ(0)'
+          e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.02)'
         }
       }}
       onClick={onClick}
@@ -80,5 +81,7 @@ export function MetricCard({
       </Stack>
     </Card>
   )
-}
+})
+
+MetricCard.displayName = 'MetricCard'
 
