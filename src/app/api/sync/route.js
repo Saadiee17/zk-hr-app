@@ -503,6 +503,7 @@ export async function POST() {
  */
 async function preWarmCache(dates) {
   const stats = { attempted: 0, succeeded: 0, failed: 0, skipped: 0 }
+  const BATCH_SIZE = 5 // Process 5 employees at a time to avoid DB connection pool exhaustion
 
   try {
     // Fetch all active employees
@@ -516,56 +517,59 @@ async function preWarmCache(dates) {
       return stats
     }
 
-    console.log(`[PRE-WARM] Starting pre-warm for ${employees.length} employees × ${dates.length} dates`)
+    console.log(`[PRE-WARM] Starting pre-warm for ${employees.length} employees × ${dates.length} dates (batch size: ${BATCH_SIZE})`)
 
-    // For each date, calculate all employees in parallel
     for (const dateStr of dates) {
-      const calculationPromises = employees.map(async (emp) => {
-        stats.attempted++
-        try {
-          // Run the full calculation for this employee + date
-          const results = await calculateForDateRange(emp.id, dateStr, dateStr)
-          const dayData = results.find(r => r.date === dateStr)
+      // Split employees into chunks of BATCH_SIZE to avoid overwhelming Supabase connection pool
+      // Firing 50+ simultaneous DB connections causes "fetch failed" / pool exhaustion errors
+      for (let i = 0; i < employees.length; i += BATCH_SIZE) {
+        const batch = employees.slice(i, i + BATCH_SIZE)
 
-          if (!dayData || dayData.status === 'Employee Not Found' || dayData.status === 'No Schedule Assigned') {
-            stats.skipped++
-            return
-          }
+        const batchPromises = batch.map(async (emp) => {
+          stats.attempted++
+          try {
+            const results = await calculateForDateRange(emp.id, dateStr, dateStr)
+            const dayData = results.find(r => r.date === dateStr)
 
-          // Upsert into cache
-          const { error: upsertErr } = await supabase
-            .from('daily_attendance_calculations')
-            .upsert({
-              employee_id: emp.id,
-              date: dayData.date,
-              status: dayData.status,
-              in_time: dayData.inTime,
-              out_time: dayData.outTime,
-              duration_hours: dayData.durationHours,
-              regular_hours: dayData.regularHours,
-              overtime_hours: dayData.overtimeHours,
-              shift_start_time: dayData.shiftStartTime,
-              shift_end_time: dayData.shiftEndTime,
-              shift_name: dayData.shiftName,
-              last_calculated_at: new Date().toISOString(),
-            }, {
-              onConflict: 'employee_id,date',
-            })
+            if (!dayData || dayData.status === 'Employee Not Found' || dayData.status === 'No Schedule Assigned') {
+              stats.skipped++
+              return
+            }
 
-          if (upsertErr) {
-            console.warn(`[PRE-WARM] Cache upsert failed for ${emp.id} on ${dateStr}:`, upsertErr.message)
+            const { error: upsertErr } = await supabase
+              .from('daily_attendance_calculations')
+              .upsert({
+                employee_id: emp.id,
+                date: dayData.date,
+                status: dayData.status,
+                in_time: dayData.inTime,
+                out_time: dayData.outTime,
+                duration_hours: dayData.durationHours,
+                regular_hours: dayData.regularHours,
+                overtime_hours: dayData.overtimeHours,
+                shift_start_time: dayData.shiftStartTime,
+                shift_end_time: dayData.shiftEndTime,
+                shift_name: dayData.shiftName,
+                last_calculated_at: new Date().toISOString(),
+              }, {
+                onConflict: 'employee_id,date',
+              })
+
+            if (upsertErr) {
+              console.warn(`[PRE-WARM] Cache upsert failed for ${emp.id} on ${dateStr}:`, upsertErr.message)
+              stats.failed++
+            } else {
+              stats.succeeded++
+            }
+          } catch (err) {
+            console.warn(`[PRE-WARM] Calculation failed for ${emp.id} on ${dateStr}:`, err.message)
             stats.failed++
-          } else {
-            stats.succeeded++
           }
-        } catch (err) {
-          console.warn(`[PRE-WARM] Calculation failed for ${emp.id} on ${dateStr}:`, err.message)
-          stats.failed++
-        }
-      })
+        })
 
-      // Wait for all employees to finish for this date before moving to next
-      await Promise.allSettled(calculationPromises)
+        await Promise.allSettled(batchPromises)
+      }
+
       console.log(`[PRE-WARM] Date ${dateStr} done — succeeded: ${stats.succeeded}, failed: ${stats.failed}, skipped: ${stats.skipped}`)
     }
   } catch (err) {

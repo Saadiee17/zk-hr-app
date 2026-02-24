@@ -159,6 +159,66 @@ const PersonnelRow = ({ person, onOpen }) => (
 // Persistent Global Cache for Session (Survives Page Navigation)
 const GLOBAL_ATTENDANCE_CACHE = new Map();
 
+// Silent background prefetch — warms DB cache + in-memory cache for a given month
+// Called after the current month loads to make adjacent months feel instant
+async function prefetchMonth(year, monthIndex, employees) {
+  const cacheKey = `${year}-${monthIndex}`
+  if (GLOBAL_ATTENDANCE_CACHE.has(cacheKey)) return // Already cached, skip
+
+  const start = new Date(year, monthIndex, 1).toISOString().slice(0, 10)
+  const rawEnd = new Date(year, monthIndex + 1, 0)
+  const end = rawEnd > new Date() ? new Date() : rawEnd
+  const endStr = end.toISOString().slice(0, 10)
+
+  const dates = []
+  const curr = new Date(start)
+  while (curr <= end) {
+    dates.push(curr.toISOString().slice(0, 10))
+    curr.setDate(curr.getDate() + 1)
+  }
+
+  // Fetch in chunks of 5 to avoid overwhelming the server
+  const allResults = []
+  for (let i = 0; i < dates.length; i += 5) {
+    const chunk = dates.slice(i, i + 5)
+    const results = await Promise.all(
+      chunk.map(d => fetch(`/api/reports/daily-work-time/batch?date=${d}`)
+        .then(r => r.json())
+        .catch(() => ({ data: [] })))
+    )
+    allResults.push(...results)
+  }
+
+  // Build and store in-memory cache
+  const personnelMap = new Map()
+  allResults.forEach(dayBatch => {
+    ; (dayBatch.data || []).forEach(record => {
+      if (!personnelMap.has(record.employee_id)) personnelMap.set(record.employee_id, [])
+      personnelMap.get(record.employee_id).push(record)
+    })
+  })
+
+  const finalData = (employees || []).map(emp => {
+    const logs = personnelMap.get(emp.id) || []
+    const lateIn = logs.filter(l => l.status === 'Late-In')
+    const attended = logs.filter(l => !['Absent', 'On Leave', ''].includes(l.status || '')).length
+    if (lateIn.length === 0) return null
+    return {
+      id: emp.id,
+      name: `${emp.first_name} ${emp.last_name}`.trim(),
+      department: emp.department?.name || 'Unassigned',
+      lateCount: lateIn.length,
+      worked: attended,
+      lateRate: attended > 0 ? (lateIn.length / attended) * 100 : 0,
+      incidents: lateIn.sort((a, b) => b.date.localeCompare(a.date)),
+      shiftName: logs.length > 0 ? logs[0].shiftName : 'Standard'
+    }
+  }).filter(Boolean).sort((a, b) => b.lateRate - a.lateRate)
+
+  GLOBAL_ATTENDANCE_CACHE.set(cacheKey, finalData)
+  console.log(`[Prefetch] Month ${year}-${monthIndex + 1} pre-warmed (${finalData.length} outliers cached)`)
+}
+
 export default function IntelligenceDashboard() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth())
@@ -270,6 +330,15 @@ export default function IntelligenceDashboard() {
       // Store in Global Cache
       GLOBAL_ATTENDANCE_CACHE.set(cacheKey, finalData)
       setLateArrivalData(finalData)
+
+      // Silently pre-warm adjacent months in the background (don't await — fire and forget)
+      // This makes clicking prev/next month feel instant on the second visit
+      const prevMonth = monthIndex === 0 ? 11 : monthIndex - 1
+      const prevYear = monthIndex === 0 ? selectedYear - 1 : selectedYear
+      const nextMonth = monthIndex === 11 ? 0 : monthIndex + 1
+      const nextYear = monthIndex === 11 ? selectedYear + 1 : selectedYear
+      prefetchMonth(prevYear, prevMonth, employees).catch(() => { })
+      prefetchMonth(nextYear, nextMonth, employees).catch(() => { })
     } catch (e) {
       showError(e.message)
     } finally {
