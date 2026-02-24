@@ -51,7 +51,7 @@ export async function GET(req) {
         status,
         in_time,
         out_time,
-        total_hours,
+        duration_hours,
         regular_hours,
         overtime_hours,
         shift_name,
@@ -85,7 +85,8 @@ export async function GET(req) {
                 status: row.status,
                 in_time: row.in_time,
                 out_time: row.out_time,
-                total_hours: row.total_hours,
+                total_hours: row.duration_hours,   // alias for consumers
+                duration_hours: row.duration_hours,
                 regular_hours: row.regular_hours,
                 overtime_hours: row.overtime_hours,
                 // Normalize field names (batch uses camelCase, cache uses snake_case)
