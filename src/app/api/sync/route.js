@@ -4,13 +4,21 @@ import { supabase } from '@/lib/supabase'
 const EDGE_FUNCTION_URL = 'https://pshttookanrjlrmwhqnt.functions.supabase.co/process-attendance-queue'
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
 
-// Kick the Edge Function — fire and forget, never awaited in the request path
-function kickEdgeFunction() {
-  fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-    body: '{}',
-  }).catch(err => console.warn('[SYNC] Edge Function kick failed (non-fatal):', err.message))
+// Fire N parallel Edge Function calls — fire and forget, never awaited
+// Each call picks up its own batch of 10 from the queue (SKIP LOCKED = safe)
+// burstCount = ceil(queue_size / 10) so the whole queue drains in one shot
+function kickEdgeFunctionBurst(burstCount = 1) {
+  const authHeader = `Bearer ${SUPABASE_ANON_KEY}`
+  for (let i = 0; i < burstCount; i++) {
+    fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+      body: '{}',
+    }).catch(err => console.warn(`[SYNC] Edge Function kick ${i + 1}/${burstCount} failed (non-fatal):`, err.message))
+  }
+  if (burstCount > 1) {
+    console.log(`[SYNC] Fired ${burstCount} parallel Edge Function calls to drain queue`)
+  }
 }
 
 /**
@@ -61,7 +69,7 @@ export async function GET(req) {
       }
 
       // Fire Edge Function immediately (non-blocking) to start draining queue
-      kickEdgeFunction()
+      kickEdgeFunctionBurst(Math.min(10, Math.ceil((activeEmps?.length || 1) * 2 / 10)))
 
       return NextResponse.json({
         success: true,
@@ -462,31 +470,42 @@ export async function GET(req) {
       throw new Error(`Failed to insert logs into Supabase: ${insertError.message}`)
     }
 
-    // Step 10: Smart Cache Invalidation (Option 1)
-    // NOTE: The DB trigger on attendance_logs automatically queues recalculation
-    // for any employee+date affected by the new logs. The Edge Function drains
-    // this queue every 60 seconds. We just need to log what happened.
-    // Historical dates (> 2 days old) are never wiped — they stay cached forever.
+    // Step 10: Smart Cache Invalidation — Event-Driven (Option 4)
+    // The DB trigger on attendance_logs automatically queued recalculations for
+    // every (employee, date) pair affected by the new logs.
+    // We now fire enough parallel Edge Function calls to drain the ENTIRE queue
+    // immediately, rather than waiting for the 60-second cron.
+    // This ensures the dashboard is current within ~20 seconds of a sync,
+    // even after an overnight batch of 100-200 new logs.
     const insertedCount = insertedData?.length || 0
+
+    // Calculate how many unique (employee, date) combinations were affected.
+    // Each unique combo = 1 queue item = 1/10th of an Edge Function call.
+    // We fire enough bursts to drain all of them at once.
     const affectedDates = [...new Set(mappedLogs.map(log => log.log_time.slice(0, 10)))]
+    const affectedEmployees = [...new Set(mappedLogs.map(log => log.employee_id).filter(Boolean))]
+    const estimatedQueueItems = affectedDates.length * affectedEmployees.length
+    // +1 ensures we always fire at least 1 call; cap at 30 to avoid overloading
+    const burstCount = Math.min(30, Math.max(1, Math.ceil(estimatedQueueItems / 10)))
 
-    console.log(`[SYNC] ${insertedCount} new logs inserted. Affected dates: ${affectedDates.join(', ')}`)
-    console.log('[SYNC] DB trigger has automatically queued recalculations for affected employees.')
-    console.log('[SYNC] Edge Function will process queue within 60 seconds.')
+    console.log(`[SYNC] ${insertedCount} new logs inserted.`)
+    console.log(`[SYNC] Estimated queue items: ~${estimatedQueueItems} (${affectedEmployees.length} employees × ${affectedDates.length} dates)`)
+    console.log(`[SYNC] Firing ${burstCount} parallel Edge Function calls to drain queue immediately`)
 
-    // Kick the Edge Function immediately so the first user doesn't wait for the cron
-    kickEdgeFunction()
+    // Fire burst — all non-blocking, sync route returns immediately after
+    kickEdgeFunctionBurst(burstCount)
 
     return NextResponse.json({
       success: true,
-      message: 'Sync completed. Recalculation queued via event-driven pipeline.',
+      message: 'Sync completed. Queue draining now via burst Edge Function calls.',
       newRecordsInserted: insertedCount,
       totalFetched: logs.length,
       filteredNew: correctedLogs.length,
       latestTimestamp: latestTimestamp?.toISOString() || null,
       syncedAt: new Date().toISOString(),
       affectedDates,
-      note: 'Cache will update within 60s via Edge Function queue processor',
+      burstFired: burstCount,
+      note: 'Cache will update within ~20 seconds',
     })
   } catch (error) {
     console.error('Sync error:', error)
