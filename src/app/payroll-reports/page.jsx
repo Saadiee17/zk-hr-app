@@ -264,50 +264,33 @@ export default function IntelligenceDashboard() {
       const empJson = await empRes.json()
       const employees = empJson.data || []
 
-      // Date range logic
-      const start = new Date(selectedYear, selectedMonthIndex, 1).toISOString().slice(0, 10)
-      const end = new Date(selectedYear, selectedMonthIndex + 1, 0).toISOString().slice(0, 10)
+      // Date range for the selected month
+      const monthStart = new Date(selectedYear, selectedMonthIndex, 1).toISOString().slice(0, 10)
+      // Cap end at today (don't request future dates)
+      const monthEnd = new Date(Math.min(
+        new Date(selectedYear, selectedMonthIndex + 1, 0).getTime(),
+        new Date().getTime()
+      )).toISOString().slice(0, 10)
 
-      const dates = []
-      const curr = new Date(start)
-      const stop = new Date(end) > new Date() ? new Date() : new Date(end)
-      while (curr <= stop) {
-        dates.push(curr.toISOString().slice(0, 10))
-        curr.setDate(curr.getDate() + 1)
-      }
+      setLoadingProgress(30)
 
-      const totalDates = dates.length
-      let completedDates = 0
+      // Single query — reads entire month from daily_attendance_calculations cache
+      // Returns in ~500ms regardless of employee count or date range
+      const monthRes = await fetch(
+        `/api/reports/daily-work-time/month?start=${monthStart}&end=${monthEnd}`,
+        { cache: 'no-store' }
+      )
+      const monthJson = await monthRes.json()
+      setLoadingProgress(80)
 
-      // Fetch in chunks for speed
-      const chunks = []
-      for (let i = 0; i < dates.length; i += 5) {
-        chunks.push(dates.slice(i, i + 5))
-      }
+      if (!monthRes.ok) throw new Error(monthJson.error || 'Failed to load attendance data')
 
-      const allResults = []
-      for (const chunk of chunks) {
-        const chunkResults = await Promise.all(chunk.map(async (d) => {
-          try {
-            const r = await fetch(`/api/reports/daily-work-time/batch?date=${d}`).then(res => res.json())
-            completedDates++
-            setLoadingProgress(Math.round((completedDates / totalDates) * 100))
-            return r
-          } catch (e) {
-            completedDates++
-            setLoadingProgress(Math.round((completedDates / totalDates) * 100))
-            return { data: [] }
-          }
-        }))
-        allResults.push(...chunkResults)
-      }
+      const allRecords = monthJson.data || []
 
       const personnelMap = new Map()
-      allResults.forEach(dayBatch => {
-        (dayBatch.data || []).forEach(record => {
-          if (!personnelMap.has(record.employee_id)) personnelMap.set(record.employee_id, [])
-          personnelMap.get(record.employee_id).push(record)
-        })
+      allRecords.forEach(record => {
+        if (!personnelMap.has(record.employee_id)) personnelMap.set(record.employee_id, [])
+        personnelMap.get(record.employee_id).push(record)
       })
 
       const finalData = employees.map(emp => {
@@ -333,10 +316,10 @@ export default function IntelligenceDashboard() {
 
       // Silently pre-warm adjacent months in the background (don't await — fire and forget)
       // This makes clicking prev/next month feel instant on the second visit
-      const prevMonth = monthIndex === 0 ? 11 : monthIndex - 1
-      const prevYear = monthIndex === 0 ? selectedYear - 1 : selectedYear
-      const nextMonth = monthIndex === 11 ? 0 : monthIndex + 1
-      const nextYear = monthIndex === 11 ? selectedYear + 1 : selectedYear
+      const prevMonth = selectedMonthIndex === 0 ? 11 : selectedMonthIndex - 1
+      const prevYear = selectedMonthIndex === 0 ? selectedYear - 1 : selectedYear
+      const nextMonth = selectedMonthIndex === 11 ? 0 : selectedMonthIndex + 1
+      const nextYear = selectedMonthIndex === 11 ? selectedYear + 1 : selectedYear
       prefetchMonth(prevYear, prevMonth, employees).catch(() => { })
       prefetchMonth(nextYear, nextMonth, employees).catch(() => { })
     } catch (e) {
