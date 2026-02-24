@@ -217,7 +217,7 @@ export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
                                                     <Text size="10px" fw={700} c="dimmed" tt="uppercase">In</Text>
                                                 </Group>
                                             ) : (
-                                                <Text size="xs" c="dimmed" fw={600} italic>—</Text>
+                                                <Text size="xs" c="dimmed" fw={600} fs="italic">—</Text>
                                             )}
                                         </Table.Td>
 
