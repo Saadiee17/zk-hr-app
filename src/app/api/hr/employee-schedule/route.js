@@ -6,12 +6,12 @@ const parseScheduleSegment = (seg) => {
   if (!seg || seg.length !== 8) return null
   const startHHMM = seg.slice(0, 4)
   const endHHMM = seg.slice(4, 8)
-  
+
   // Non-working day check
   if (startHHMM === '0000' && endHHMM === '2359') {
     return null // Day off
   }
-  
+
   return {
     startHHMM,
     endHHMM,
@@ -48,7 +48,7 @@ export async function GET(req) {
     // Determine which timezone to use (individual override or department default)
     let tzId = emp.individual_tz_1 || null
     let scheduleType = 'individual'
-    
+
     if (!tzId && emp.department_id) {
       const { data: sched, error: schedErr } = await supabase
         .from('schedules')
@@ -92,15 +92,21 @@ export async function GET(req) {
     }
 
     // Parse tz_string into weekly schedule
-    // tz_string format: 56 chars, 8 chars per day (Sun=0, Mon=1, ..., Sat=6)
+    // tz_string format: 8-char header (e.g. "00002359") + 7×8-char day segments = 64 chars
+    // Days: Sun(0) Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) Sat(6)
+    const HEADER_LENGTH = 8
+    const DAY_LENGTH = 8
+    const tzStr = tz.tz_string || ''
     const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const weeklySchedule = []
-    
+
     for (let weekday = 0; weekday < 7; weekday++) {
-      const start = weekday * 8
-      const seg = tz.tz_string.slice(start, start + 8)
+      const startIdx = HEADER_LENGTH + weekday * DAY_LENGTH
+      const seg = tzStr.length >= startIdx + DAY_LENGTH
+        ? tzStr.slice(startIdx, startIdx + DAY_LENGTH)
+        : ''
       const shift = parseScheduleSegment(seg)
-      
+
       weeklySchedule.push({
         day: weekDays[weekday],
         isWorking: shift !== null,

@@ -4,19 +4,15 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 /**
  * SyncProgressBanner
- * 
+ *
  * Polls /api/sync/queue-status every 3 seconds.
- * Shows a subtle animated progress bar while attendance data is being
+ * Shows a subtle animated progress banner while attendance data is being
  * recalculated by the Edge Function after a sync.
- * 
- * Lifecycle:
- *  - Hidden:    queue is empty (isActive = false, no recent activity)
- *  - Sliding in: queue becomes active (new sync lands)
- *  - Progressing: updates bar as percent climbs
- *  - Success:   reaches 100%, shows checkmark for 3 seconds, slides out
- * 
- * This is designed to be mounted once in the dashboard and left running.
- * It never blocks the UI — data loads from cache regardless.
+ *
+ * - Slides in when queue becomes active
+ * - Shows animated shimmer progress bar with live percent
+ * - Transitions to green checkmark at 100%, holds for 3 seconds
+ * - Auto-hides OR can be manually dismissed with the × button
  */
 export function SyncProgressBanner({ onComplete }) {
     const [state, setState] = useState({
@@ -26,21 +22,36 @@ export function SyncProgressBanner({ onComplete }) {
         total: 0,
         pending: 0,
         processing: 0,
-        completing: false, // true during the 3s "done" phase before hiding
+        completing: false,
     })
+    const [dismissed, setDismissed] = useState(false)
 
     const pollRef = useRef(null)
     const completingRef = useRef(false)
+    const hideTimerRef = useRef(null)
+
+    const dismiss = useCallback(() => {
+        setState(prev => ({ ...prev, visible: false, completing: false }))
+        setDismissed(true)
+        completingRef.current = false
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+        // Reset dismissed after 30s so next real sync can show again
+        setTimeout(() => setDismissed(false), 30000)
+    }, [])
 
     const checkStatus = useCallback(async () => {
+        if (dismissed) return
         try {
             const res = await fetch('/api/sync/queue-status', { cache: 'no-store' })
             if (!res.ok) return
             const data = await res.json()
 
             if (data.isActive) {
-                // Queue is active — show and update
                 completingRef.current = false
+                if (hideTimerRef.current) {
+                    clearTimeout(hideTimerRef.current)
+                    hideTimerRef.current = null
+                }
                 setState(prev => ({
                     ...prev,
                     visible: true,
@@ -52,7 +63,7 @@ export function SyncProgressBanner({ onComplete }) {
                     processing: data.processing,
                 }))
             } else if (data.total > 0 && !completingRef.current) {
-                // Queue just finished — show 100% for 3 seconds then hide
+                // Queue just finished — show 100% complete state
                 completingRef.current = true
                 setState(prev => ({
                     ...prev,
@@ -64,27 +75,27 @@ export function SyncProgressBanner({ onComplete }) {
                     pending: 0,
                     processing: 0,
                 }))
-
-                // Notify parent (e.g. to refresh dashboard data)
                 onComplete?.()
-
-                // Hide after 3 seconds
-                setTimeout(() => {
+                // Auto-hide after 4 seconds (user can also dismiss manually)
+                hideTimerRef.current = setTimeout(() => {
                     setState(prev => ({ ...prev, visible: false, completing: false }))
                     completingRef.current = false
-                }, 3000)
+                    hideTimerRef.current = null
+                }, 4000)
             }
             // If total === 0 → no recent queue activity, stay hidden
         } catch {
             // Silently ignore — non-critical
         }
-    }, [onComplete])
+    }, [dismissed, onComplete])
 
     useEffect(() => {
-        // Poll every 3 seconds
         checkStatus()
         pollRef.current = setInterval(checkStatus, 3000)
-        return () => clearInterval(pollRef.current)
+        return () => {
+            clearInterval(pollRef.current)
+            if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+        }
     }, [checkStatus])
 
     if (!state.visible) return null
@@ -117,19 +128,19 @@ export function SyncProgressBanner({ onComplete }) {
           0%   { background-position: -200% center; }
           100% { background-position: 200% center; }
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
-            <div style={{ padding: '16px 18px 14px' }}>
+            <div style={{ padding: '14px 14px 12px 16px' }}>
                 {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    {/* Animated icon */}
+                    {/* Icon */}
                     <div style={{
-                        width: 32, height: 32, borderRadius: 10,
+                        width: 32, height: 32, borderRadius: 10, flexShrink: 0,
                         background: isComplete
                             ? 'linear-gradient(135deg, #22c55e, #16a34a)'
                             : 'linear-gradient(135deg, #3b82f6, #2563eb)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
                         transition: 'background 0.4s ease',
                     }}>
                         {isComplete ? (
@@ -140,37 +151,58 @@ export function SyncProgressBanner({ onComplete }) {
                         ) : (
                             // Spinning dots / sync icon
                             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'spin 1.2s linear infinite' }}>
-                                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                                 <circle cx="8" cy="8" r="6" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
                                 <path d="M8 2a6 6 0 0 1 6 6" stroke="white" strokeWidth="2" strokeLinecap="round" />
                             </svg>
                         )}
                     </div>
 
+                    {/* Text */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>
                             {isComplete ? 'Attendance Data Ready' : 'Updating Attendance Data'}
                         </div>
                         <div style={{ fontSize: 11, color: '#888', fontWeight: 500, marginTop: 1 }}>
                             {isComplete
-                                ? `${state.done} records synced and updated`
+                                ? `${state.done} records synced and ready`
                                 : state.pending > 0
                                     ? `${state.done} of ${state.total} employees processed`
-                                    : `Finishing up… ${state.processing} remaining`
+                                    : `Finishing… ${state.processing} remaining`
                             }
                         </div>
                     </div>
 
-                    {/* Percent badge */}
-                    <div style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: isComplete ? '#16a34a' : '#2563eb',
-                        minWidth: 36,
-                        textAlign: 'right',
-                        transition: 'color 0.4s ease',
-                    }}>
-                        {state.percent}%
+                    {/* Right side: percent + dismiss button */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{
+                            fontSize: 12, fontWeight: 800,
+                            color: isComplete ? '#16a34a' : '#2563eb',
+                            transition: 'color 0.4s ease',
+                        }}>
+                            {state.percent}%
+                        </span>
+                        {/* × close button */}
+                        <button
+                            onClick={dismiss}
+                            aria-label="Dismiss"
+                            style={{
+                                width: 22, height: 22,
+                                borderRadius: 6,
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#bbb',
+                                fontSize: 16,
+                                lineHeight: 1,
+                                padding: 0,
+                                transition: 'color 0.15s, background 0.15s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.color = '#555'; e.currentTarget.style.background = '#f1f3f5' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = '#bbb'; e.currentTarget.style.background = 'transparent' }}
+                        >
+                            ×
+                        </button>
                     </div>
                 </div>
 
@@ -194,16 +226,16 @@ export function SyncProgressBanner({ onComplete }) {
                     }} />
                 </div>
 
-                {/* Footer — only shown when active */}
+                {/* Footer — only when still active */}
                 {!isComplete && (
                     <div style={{
                         display: 'flex', justifyContent: 'space-between',
-                        marginTop: 8,
+                        marginTop: 7,
                     }}>
-                        <span style={{ fontSize: 10, color: '#bbb', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <span style={{ fontSize: 10, color: '#ccc', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             Processing via Edge Function
                         </span>
-                        <span style={{ fontSize: 10, color: '#bbb', fontWeight: 600 }}>
+                        <span style={{ fontSize: 10, color: '#ccc', fontWeight: 600 }}>
                             Auto-refresh when done
                         </span>
                     </div>

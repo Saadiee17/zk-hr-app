@@ -143,7 +143,7 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
         backdropFilter: 'blur(8px)',
       }}
     >
-      <LoadingOverlay visible={loading} overlayBlur={2} />
+      <LoadingOverlay visible={loading} overlayProps={{ blur: 2 }} />
       <Table
         verticalSpacing="md"
         horizontalSpacing="lg"
