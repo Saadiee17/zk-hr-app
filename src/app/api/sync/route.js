@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { calculateForDateRange } from '@/app/api/reports/daily-work-time/route'
+
+const EDGE_FUNCTION_URL = 'https://pshttookanrjlrmwhqnt.functions.supabase.co/process-attendance-queue'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+
+// Kick the Edge Function — fire and forget, never awaited in the request path
+function kickEdgeFunction() {
+  fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    body: '{}',
+  }).catch(err => console.warn('[SYNC] Edge Function kick failed (non-fatal):', err.message))
+}
 
 /**
  * Sync attendance logs from Python Bridge to Supabase
@@ -15,8 +26,9 @@ export async function GET(req) {
     const refreshOnly = url.searchParams.get('refresh_only') === 'true'
 
     if (refreshOnly) {
-      console.log('[SYNC] Refresh only mode: Clearing + pre-warming cache')
-      // OPTION 1: Only clear today + yesterday (Pakistan time) — never wipe historical data
+      console.log('[SYNC] Refresh only mode: Clearing cache + kicking Edge Function')
+      // Smart invalidation: only clear today + yesterday (Pakistan time)
+      // Historical dates remain cached forever — never wiped automatically
       const pakNow = new Date(new Date().getTime() + 5 * 60 * 60 * 1000)
       const todayStr = pakNow.toISOString().slice(0, 10)
       const yesterdayStr = new Date(pakNow.getTime() - 86400000).toISOString().slice(0, 10)
@@ -31,14 +43,31 @@ export async function GET(req) {
         console.warn('[SYNC] Cache clearing error:', deleteError)
       }
 
-      // OPTION 2: Pre-warm cache immediately after clearing
-      const preWarmStats = await preWarmCache(datesToClear)
+      // Queue recalculation for all active employees for these dates
+      // The trigger only fires on attendance_logs changes, so we manually queue here
+      const { data: activeEmps } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('is_active', true)
+
+      if (activeEmps && activeEmps.length > 0) {
+        const queueRows = activeEmps.flatMap(emp =>
+          datesToClear.map(date => ({ employee_id: emp.id, date, status: 'pending' }))
+        )
+        await supabase
+          .from('attendance_recalc_queue')
+          .upsert(queueRows, { onConflict: 'employee_id,date,status', ignoreDuplicates: false })
+        console.log(`[SYNC] Queued recalc for ${activeEmps.length} employees × ${datesToClear.length} dates`)
+      }
+
+      // Fire Edge Function immediately (non-blocking) to start draining queue
+      kickEdgeFunction()
 
       return NextResponse.json({
         success: true,
-        message: 'Dashboard data refreshed and pre-warmed.',
+        message: 'Cache cleared. Recalculation queued — data will be ready within 60 seconds.',
         clearedDates: datesToClear,
-        preWarmed: preWarmStats,
+        queuedEmployees: activeEmps?.length || 0,
       })
     }
 
@@ -433,46 +462,31 @@ export async function GET(req) {
       throw new Error(`Failed to insert logs into Supabase: ${insertError.message}`)
     }
 
-    // Step 10: OPTION 1 — Smart Cache Invalidation
-    // Only clear today + yesterday in Pakistan time. Historical dates are NEVER wiped
-    // automatically — once calculated they remain valid forever unless manually cleared.
-    // This prevents the previous behaviour where all ~30 dates in a sync would get wiped.
-    const pakNow = new Date(new Date().getTime() + 5 * 60 * 60 * 1000)
-    const todayStr = pakNow.toISOString().slice(0, 10)
-    const yesterdayStr = new Date(pakNow.getTime() - 86400000).toISOString().slice(0, 10)
-    const datesToInvalidate = [yesterdayStr, todayStr]
-
-    try {
-      console.log(`[SYNC] Smart cache invalidation: clearing only ${datesToInvalidate.join(', ')}`)
-      const { error: deleteError } = await supabase
-        .from('daily_attendance_calculations')
-        .delete()
-        .in('date', datesToInvalidate)
-
-      if (deleteError) {
-        console.warn('[SYNC] Failed to clear targeted cache:', deleteError)
-      }
-    } catch (cacheErr) {
-      console.warn('[SYNC] Exception clearing targeted cache:', cacheErr)
-    }
-
-    // Step 11: OPTION 2 — Background Pre-Warming
-    // Immediately recalculate + cache today and yesterday for ALL active employees.
-    // By the time the user opens the dashboard, results are already ready — zero cold load.
-    // This runs in the background (non-blocking to the sync response).
+    // Step 10: Smart Cache Invalidation (Option 1)
+    // NOTE: The DB trigger on attendance_logs automatically queues recalculation
+    // for any employee+date affected by the new logs. The Edge Function drains
+    // this queue every 60 seconds. We just need to log what happened.
+    // Historical dates (> 2 days old) are never wiped — they stay cached forever.
     const insertedCount = insertedData?.length || 0
-    const preWarmStats = await preWarmCache(datesToInvalidate)
-    console.log(`[SYNC] Pre-warm complete:`, preWarmStats)
+    const affectedDates = [...new Set(mappedLogs.map(log => log.log_time.slice(0, 10)))]
+
+    console.log(`[SYNC] ${insertedCount} new logs inserted. Affected dates: ${affectedDates.join(', ')}`)
+    console.log('[SYNC] DB trigger has automatically queued recalculations for affected employees.')
+    console.log('[SYNC] Edge Function will process queue within 60 seconds.')
+
+    // Kick the Edge Function immediately so the first user doesn't wait for the cron
+    kickEdgeFunction()
 
     return NextResponse.json({
       success: true,
-      message: 'Sync completed successfully',
+      message: 'Sync completed. Recalculation queued via event-driven pipeline.',
       newRecordsInserted: insertedCount,
       totalFetched: logs.length,
       filteredNew: correctedLogs.length,
       latestTimestamp: latestTimestamp?.toISOString() || null,
       syncedAt: new Date().toISOString(),
-      preWarmed: preWarmStats,
+      affectedDates,
+      note: 'Cache will update within 60s via Edge Function queue processor',
     })
   } catch (error) {
     console.error('Sync error:', error)
