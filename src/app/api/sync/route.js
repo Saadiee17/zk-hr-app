@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { calculateForDateRange } from '@/app/api/reports/daily-work-time/route'
 
 /**
  * Sync attendance logs from Python Bridge to Supabase
@@ -14,18 +15,12 @@ export async function GET(req) {
     const refreshOnly = url.searchParams.get('refresh_only') === 'true'
 
     if (refreshOnly) {
-      console.log('[SYNC] Refresh only mode: Clearing reports cache')
-      // Clear cache for today, yesterday, and tomorrow to ensure metrics update
-      const now = new Date()
-      const pakistanOffset = 5 * 60 * 60 * 1000
-      const pakNow = new Date(now.getTime() + pakistanOffset)
-
-      const datesToClear = []
-      for (let i = -1; i <= 1; i++) {
-        const d = new Date(pakNow)
-        d.setDate(d.getDate() + i)
-        datesToClear.push(d.toISOString().slice(0, 10))
-      }
+      console.log('[SYNC] Refresh only mode: Clearing + pre-warming cache')
+      // OPTION 1: Only clear today + yesterday (Pakistan time) — never wipe historical data
+      const pakNow = new Date(new Date().getTime() + 5 * 60 * 60 * 1000)
+      const todayStr = pakNow.toISOString().slice(0, 10)
+      const yesterdayStr = new Date(pakNow.getTime() - 86400000).toISOString().slice(0, 10)
+      const datesToClear = [yesterdayStr, todayStr]
 
       const { error: deleteError } = await supabase
         .from('daily_attendance_calculations')
@@ -36,10 +31,14 @@ export async function GET(req) {
         console.warn('[SYNC] Cache clearing error:', deleteError)
       }
 
+      // OPTION 2: Pre-warm cache immediately after clearing
+      const preWarmStats = await preWarmCache(datesToClear)
+
       return NextResponse.json({
         success: true,
-        message: 'Dashboard data refreshed from database.',
-        clearedDates: datesToClear
+        message: 'Dashboard data refreshed and pre-warmed.',
+        clearedDates: datesToClear,
+        preWarmed: preWarmStats,
       })
     }
 
@@ -434,27 +433,36 @@ export async function GET(req) {
       throw new Error(`Failed to insert logs into Supabase: ${insertError.message}`)
     }
 
-    // Step 10: Clear reports cache for the affected dates
-    // This ensures that the next dashboard load or metrics fetch will recalculate with new logs
-    const affectedDates = [...new Set(mappedLogs.map(log => log.log_time.slice(0, 10)))]
-    if (affectedDates.length > 0) {
-      console.log(`[SYNC] Clearing reports cache for dates: ${affectedDates.join(', ')}`)
-      try {
-        const { error: deleteError } = await supabase
-          .from('daily_attendance_calculations')
-          .delete()
-          .in('date', affectedDates)
+    // Step 10: OPTION 1 — Smart Cache Invalidation
+    // Only clear today + yesterday in Pakistan time. Historical dates are NEVER wiped
+    // automatically — once calculated they remain valid forever unless manually cleared.
+    // This prevents the previous behaviour where all ~30 dates in a sync would get wiped.
+    const pakNow = new Date(new Date().getTime() + 5 * 60 * 60 * 1000)
+    const todayStr = pakNow.toISOString().slice(0, 10)
+    const yesterdayStr = new Date(pakNow.getTime() - 86400000).toISOString().slice(0, 10)
+    const datesToInvalidate = [yesterdayStr, todayStr]
 
-        if (deleteError) {
-          console.warn('[SYNC] Failed to clear reports cache:', deleteError)
-        }
-      } catch (cacheErr) {
-        console.warn('[SYNC] Exception clearing reports cache:', cacheErr)
+    try {
+      console.log(`[SYNC] Smart cache invalidation: clearing only ${datesToInvalidate.join(', ')}`)
+      const { error: deleteError } = await supabase
+        .from('daily_attendance_calculations')
+        .delete()
+        .in('date', datesToInvalidate)
+
+      if (deleteError) {
+        console.warn('[SYNC] Failed to clear targeted cache:', deleteError)
       }
+    } catch (cacheErr) {
+      console.warn('[SYNC] Exception clearing targeted cache:', cacheErr)
     }
 
-    // Step 11: Return JSON response with number of new records inserted
+    // Step 11: OPTION 2 — Background Pre-Warming
+    // Immediately recalculate + cache today and yesterday for ALL active employees.
+    // By the time the user opens the dashboard, results are already ready — zero cold load.
+    // This runs in the background (non-blocking to the sync response).
     const insertedCount = insertedData?.length || 0
+    const preWarmStats = await preWarmCache(datesToInvalidate)
+    console.log(`[SYNC] Pre-warm complete:`, preWarmStats)
 
     return NextResponse.json({
       success: true,
@@ -464,6 +472,7 @@ export async function GET(req) {
       filteredNew: correctedLogs.length,
       latestTimestamp: latestTimestamp?.toISOString() || null,
       syncedAt: new Date().toISOString(),
+      preWarmed: preWarmStats,
     })
   } catch (error) {
     console.error('Sync error:', error)
@@ -484,3 +493,84 @@ export async function POST() {
   return GET()
 }
 
+/**
+ * OPTION 2: Pre-warm the cache for all active employees for the given dates.
+ * Calculates attendance for each employee + date in parallel and stores in cache.
+ * This ensures the dashboard always reads from cache — never triggers cold calculation.
+ *
+ * @param {string[]} dates - Array of YYYY-MM-DD strings to pre-warm
+ * @returns {object} Stats about the pre-warm operation
+ */
+async function preWarmCache(dates) {
+  const stats = { attempted: 0, succeeded: 0, failed: 0, skipped: 0 }
+
+  try {
+    // Fetch all active employees
+    const { data: employees, error: empErr } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('is_active', true)
+
+    if (empErr || !employees || employees.length === 0) {
+      console.warn('[PRE-WARM] Could not fetch employees:', empErr?.message)
+      return stats
+    }
+
+    console.log(`[PRE-WARM] Starting pre-warm for ${employees.length} employees × ${dates.length} dates`)
+
+    // For each date, calculate all employees in parallel
+    for (const dateStr of dates) {
+      const calculationPromises = employees.map(async (emp) => {
+        stats.attempted++
+        try {
+          // Run the full calculation for this employee + date
+          const results = await calculateForDateRange(emp.id, dateStr, dateStr)
+          const dayData = results.find(r => r.date === dateStr)
+
+          if (!dayData || dayData.status === 'Employee Not Found' || dayData.status === 'No Schedule Assigned') {
+            stats.skipped++
+            return
+          }
+
+          // Upsert into cache
+          const { error: upsertErr } = await supabase
+            .from('daily_attendance_calculations')
+            .upsert({
+              employee_id: emp.id,
+              date: dayData.date,
+              status: dayData.status,
+              in_time: dayData.inTime,
+              out_time: dayData.outTime,
+              duration_hours: dayData.durationHours,
+              regular_hours: dayData.regularHours,
+              overtime_hours: dayData.overtimeHours,
+              shift_start_time: dayData.shiftStartTime,
+              shift_end_time: dayData.shiftEndTime,
+              shift_name: dayData.shiftName,
+              last_calculated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'employee_id,date',
+            })
+
+          if (upsertErr) {
+            console.warn(`[PRE-WARM] Cache upsert failed for ${emp.id} on ${dateStr}:`, upsertErr.message)
+            stats.failed++
+          } else {
+            stats.succeeded++
+          }
+        } catch (err) {
+          console.warn(`[PRE-WARM] Calculation failed for ${emp.id} on ${dateStr}:`, err.message)
+          stats.failed++
+        }
+      })
+
+      // Wait for all employees to finish for this date before moving to next
+      await Promise.allSettled(calculationPromises)
+      console.log(`[PRE-WARM] Date ${dateStr} done — succeeded: ${stats.succeeded}, failed: ${stats.failed}, skipped: ${stats.skipped}`)
+    }
+  } catch (err) {
+    console.error('[PRE-WARM] Fatal error in pre-warm:', err.message)
+  }
+
+  return stats
+}
