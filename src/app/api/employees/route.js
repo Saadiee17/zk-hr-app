@@ -107,11 +107,21 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({
-      success: true,
-      data: enriched,
-      count: enriched.length,
-    })
+    return NextResponse.json(
+      {
+        success: true,
+        data: enriched,
+        count: enriched.length,
+      },
+      {
+        headers: {
+          // Cache for 60s, serve stale for up to 5 min while revalidating.
+          // Employees list changes rarely mid-session — this eliminates
+          // the 1.5-2s DB hit on every page navigation.
+          'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+        },
+      }
+    )
   } catch (error) {
     console.error('Employees API error:', error)
     return NextResponse.json(
