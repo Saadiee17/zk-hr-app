@@ -303,6 +303,44 @@ export async function GET(req) {
       }
     }
 
+    // Step 4.5: Backfill employee_id on ALL attendance_logs where it is NULL
+    // This ensures historical logs that were inserted before employee matching was working
+    // always display the correct employee name. Runs on every sync as a lightweight safety net.
+    // Only active employees are matched (inactive employees remain unlinked intentionally).
+    try {
+      // Fetch all active employees with their zk_user_id
+      const { data: activeEmps } = await supabase
+        .from('employees')
+        .select('id, zk_user_id')
+        .eq('is_active', true)
+        .not('zk_user_id', 'is', null)
+
+      if (activeEmps && activeEmps.length > 0) {
+        const zkIds = activeEmps.map(e => e.zk_user_id).filter(Boolean)
+
+        // For each active employee, update any unlinked logs matching their zk_user_id
+        // We do this in a single query using the supabase client's update with filters
+        // Note: Supabase JS client doesn't support UPDATE...FROM directly,
+        // so we process in small batches if needed, or use a single targeted update per employee
+        const backfillPromises = activeEmps.map(emp =>
+          supabase
+            .from('attendance_logs')
+            .update({ employee_id: emp.id })
+            .eq('zk_user_id', emp.zk_user_id)
+            .is('employee_id', null)
+        )
+        const backfillResults = await Promise.allSettled(backfillPromises)
+        const backfillErrors = backfillResults.filter(r => r.status === 'rejected' || r.value?.error)
+        if (backfillErrors.length > 0) {
+          console.warn(`[SYNC] Backfill: ${backfillErrors.length} errors (non-fatal)`)
+        } else {
+          console.log(`[SYNC] Backfill: employee_id linked on unmatched logs for ${activeEmps.length} employees`)
+        }
+      }
+    } catch (backfillErr) {
+      console.warn('[SYNC] Backfill employee_id step exception (non-fatal):', backfillErr.message)
+    }
+
     // Step 5: If no new logs to sync, return early (but employees are already created above)
     if (correctedLogs.length === 0) {
       return NextResponse.json({
