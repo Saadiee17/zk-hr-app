@@ -13,15 +13,15 @@ export default function AttendanceOutlierPage() {
   const now = new Date()
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(now.getMonth())
-  
+
   const selectedMonth = new Date(selectedYear, selectedMonthIndex, 1)
-  
+
   const handleTabChange = (value) => {
     if (value === 'payroll-summary') {
       router.push('/payroll-reports')
     }
   }
-  
+
   const monthOptions = [
     { value: '0', label: 'January' },
     { value: '1', label: 'February' },
@@ -36,7 +36,7 @@ export default function AttendanceOutlierPage() {
     { value: '10', label: 'November' },
     { value: '11', label: 'December' },
   ]
-  
+
   const currentYear = now.getFullYear()
   const yearOptions = Array.from({ length: 5 }, (_, i) => {
     const year = currentYear - 2 + i
@@ -56,12 +56,12 @@ export default function AttendanceOutlierPage() {
     const month = monthDate.getMonth()
     const start = new Date(year, month, 1)
     const end = new Date(year, month + 1, 0) // Last day of month
-    
+
     // If current month, end should be today
     const now = new Date()
     const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
     const endDate = isCurrentMonth ? now : end
-    
+
     return {
       start: start.toISOString().slice(0, 10),
       end: endDate.toISOString().slice(0, 10)
@@ -79,57 +79,30 @@ export default function AttendanceOutlierPage() {
       if (!employeesRes.ok) throw new Error(employeesJson.error || 'Failed to fetch employees')
       const employees = employeesJson.data || []
 
-      // Generate all dates in the range
-      const dates = []
-      const startDate = new Date(start)
-      const endDate = new Date(end)
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        dates.push(d.toISOString().slice(0, 10))
-      }
-
-      console.log(`[Outlier] Fetching data for ${dates.length} dates using batch endpoint (cached, returns immediately)`)
+      console.log(`[Outlier] Fetching month ${start} → ${end} via /month endpoint (single cache query)`)
       const fetchStartTime = Date.now()
 
-      // Fetch data for all dates using batch endpoint (optimized: returns cached data immediately!)
-      // With the batch endpoint optimization, each request returns instantly with cached data
-      // Missing calculations happen in background and don't block the response
-      const datePromises = dates.map(async (dateStr) => {
-        try {
-          const batchRes = await fetch(`/api/reports/daily-work-time/batch?date=${dateStr}`)
-          const batchJson = await batchRes.json()
-          if (!batchRes.ok) {
-            console.warn(`[Outlier] Failed to fetch batch for ${dateStr}:`, batchJson.error)
-            return { date: dateStr, data: [] }
-          }
-          // Log cache hit info if available
-          if (batchJson.cached !== undefined) {
-            console.log(`[Outlier] Date ${dateStr}: ${batchJson.cached} cached, ${batchJson.missing || 0} missing (calculated in background)`)
-          }
-          return { date: dateStr, data: batchJson.data || [] }
-        } catch (error) {
-          console.error(`[Outlier] Error fetching batch for ${dateStr}:`, error)
-          return { date: dateStr, data: [] }
-        }
-      })
-
-      const dateResults = await Promise.all(datePromises)
+      // Single query — reads entire month from daily_attendance_calculations in one shot
+      const monthRes = await fetch(
+        `/api/reports/daily-work-time/month?start=${start}&end=${end}`,
+        { cache: 'no-store' }
+      )
+      const monthJson = await monthRes.json()
       const fetchEndTime = Date.now()
-      console.log(`[Outlier] Fetched data for ${dateResults.length} dates in ${fetchEndTime - fetchStartTime}ms`)
+      console.log(`[Outlier] Month fetched in ${fetchEndTime - fetchStartTime}ms (${monthJson.total || 0} records from cache)`)
+
+      if (!monthRes.ok) throw new Error(monthJson.error || 'Failed to load attendance data')
+
+      const allRecords = monthJson.data || []
 
       // Build a map of employee_id -> array of daily reports
       const employeeReportsMap = new Map()
-      
-      dateResults.forEach(({ date, data }) => {
-        data.forEach((dayData) => {
-          const empId = dayData.employee_id
-          if (!employeeReportsMap.has(empId)) {
-            employeeReportsMap.set(empId, [])
-          }
-          employeeReportsMap.get(empId).push({
-            ...dayData,
-            date: date
-          })
-        })
+      allRecords.forEach((record) => {
+        const empId = record.employee_id
+        if (!employeeReportsMap.has(empId)) {
+          employeeReportsMap.set(empId, [])
+        }
+        employeeReportsMap.get(empId).push(record)
       })
 
       // Store all reports for reuse (avoid re-fetching when expanding employee details)
@@ -137,13 +110,13 @@ export default function AttendanceOutlierPage() {
 
       // Process each employee's reports
       const results = []
-      
+
       employees.forEach((employee) => {
         const dailyReports = employeeReportsMap.get(employee.id) || []
-        
+
         // Filter for Late-In days
         const lateDays = dailyReports.filter(day => day.status === 'Late-In')
-        
+
         if (lateDays.length === 0) {
           return // Skip employees with no late arrivals
         }
@@ -212,14 +185,14 @@ export default function AttendanceOutlierPage() {
       })
       const reportRes = await fetch(`/api/reports/daily-work-time?${qs.toString()}`)
       const reportJson = await reportRes.json()
-      
+
       if (!reportRes.ok) {
         throw new Error(reportJson.error || 'Failed to fetch employee details')
       }
 
       const dailyReports = reportJson.data || []
       const lateDays = dailyReports.filter(day => day.status === 'Late-In')
-      
+
       setEmployeeLateDetails(prev => {
         const newMap = new Map(prev)
         newMap.set(employeeId, lateDays)

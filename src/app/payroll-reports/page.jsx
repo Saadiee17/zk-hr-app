@@ -165,37 +165,24 @@ async function prefetchMonth(year, monthIndex, employees) {
   const cacheKey = `${year}-${monthIndex}`
   if (GLOBAL_ATTENDANCE_CACHE.has(cacheKey)) return // Already cached, skip
 
-  const start = new Date(year, monthIndex, 1).toISOString().slice(0, 10)
-  const rawEnd = new Date(year, monthIndex + 1, 0)
-  const end = rawEnd > new Date() ? new Date() : rawEnd
-  const endStr = end.toISOString().slice(0, 10)
+  const startStr = new Date(year, monthIndex, 1).toISOString().slice(0, 10)
+  const endStr = new Date(Math.min(
+    new Date(year, monthIndex + 1, 0).getTime(),
+    new Date().getTime()
+  )).toISOString().slice(0, 10)
 
-  const dates = []
-  const curr = new Date(start)
-  while (curr <= end) {
-    dates.push(curr.toISOString().slice(0, 10))
-    curr.setDate(curr.getDate() + 1)
-  }
+  // Single query via /month endpoint — reads whole month from cache in one shot
+  const json = await fetch(`/api/reports/daily-work-time/month?start=${startStr}&end=${endStr}`)
+    .then(r => r.json())
+    .catch(() => ({ data: [] }))
 
-  // Fetch in chunks of 5 to avoid overwhelming the server
-  const allResults = []
-  for (let i = 0; i < dates.length; i += 5) {
-    const chunk = dates.slice(i, i + 5)
-    const results = await Promise.all(
-      chunk.map(d => fetch(`/api/reports/daily-work-time/batch?date=${d}`)
-        .then(r => r.json())
-        .catch(() => ({ data: [] })))
-    )
-    allResults.push(...results)
-  }
+  const allRecords = json.data || []
 
   // Build and store in-memory cache
   const personnelMap = new Map()
-  allResults.forEach(dayBatch => {
-    ; (dayBatch.data || []).forEach(record => {
-      if (!personnelMap.has(record.employee_id)) personnelMap.set(record.employee_id, [])
-      personnelMap.get(record.employee_id).push(record)
-    })
+  allRecords.forEach(record => {
+    if (!personnelMap.has(record.employee_id)) personnelMap.set(record.employee_id, [])
+    personnelMap.get(record.employee_id).push(record)
   })
 
   const finalData = (employees || []).map(emp => {
