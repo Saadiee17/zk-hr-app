@@ -55,6 +55,7 @@ import { MetricCard } from '@/components/shared/MetricCard'
 import { UniversalTabs } from '@/components/shared/UniversalTabs'
 import { UniversalTable } from '@/components/shared/UniversalTable'
 import { DepartmentStatusGrid } from '@/components/dashboard/DepartmentStatus'
+import { SyncProgressBanner } from '@/components/shared/SyncProgressBanner'
 
 function Dashboard({ isCollapsed }) {
   // State for logs table
@@ -765,6 +766,12 @@ function Dashboard({ isCollapsed }) {
         minHeight: '100vh',
       }}
     >
+      {/* Real-time sync progress banner — polls queue-status every 3s, auto-hides when done */}
+      <SyncProgressBanner onComplete={() => {
+        // Trigger a soft re-fetch of today's attendance data once Edge Function finishes
+        // This ensures the dashboard reflects the freshest data without a full page reload
+        fetchAttendanceData && fetchAttendanceData()
+      }} />
       <Container fluid pt={60} pb="xl" px={24}>
         {/* Header Section */}
         <Stack gap="lg" mb={30}>
