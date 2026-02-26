@@ -92,16 +92,16 @@ export async function GET(req) {
     }
 
     // Parse tz_string into weekly schedule
-    // tz_string format: 8-char header (e.g. "00002359") + 7×8-char day segments = 64 chars
+    // tz_string format: 7×8-char day segments = 56 chars total, NO header
     // Days: Sun(0) Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) Sat(6)
-    const HEADER_LENGTH = 8
+    // Day off encoded as '00002359', working day as 'SSSSEEEE' (HHMM start/end)
     const DAY_LENGTH = 8
     const tzStr = tz.tz_string || ''
     const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const weeklySchedule = []
 
     for (let weekday = 0; weekday < 7; weekday++) {
-      const startIdx = HEADER_LENGTH + weekday * DAY_LENGTH
+      const startIdx = weekday * DAY_LENGTH  // No header offset — string starts at day 0
       const seg = tzStr.length >= startIdx + DAY_LENGTH
         ? tzStr.slice(startIdx, startIdx + DAY_LENGTH)
         : ''
