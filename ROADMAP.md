@@ -183,3 +183,98 @@ Affects: `payroll-reports`, `attendance-outlier`, `prefetchMonth`.
 - **Queue drain:** Supabase Edge Function `process-attendance-queue` — burst mode on sync
 - **Sync:** Python Bridge (desktop) → `/api/sync` → attendance_logs → trigger fires
 - **Auth:** Custom JWT + `employees` table privilege levels (0=user, 14=admin, etc.)
+
+---
+
+## 🏗️ Future Architecture Migration — Clean Schedule Format (Replace tz_string)
+
+> Status: Planned — do NOT implement until next major feature sprint
+> Decided: 2026-02-27 after Ramzan timing incident
+
+### Background
+
+The current schedule system uses the **ZK device's proprietary `tz_string` format** — a 56-character binary encoding of weekly shift times. This format was inherited because the original design intended to sync schedules from the ZK device itself. However, in practice:
+
+- **We don't use the ZK device to define schedules.** The device is purely a **punch recorder**. All schedule management happens in our app.
+- The tz_string format has caused multiple bugs: wrong offset parsing (`+4` header bug), wrong PKT→UTC conversion for overnight shifts, and opaque data that's impossible to debug by eye.
+- Every schedule edge case (half days, exceptions, overrides) fights against the tz_string encoding.
+- The Ramzan timing incident on 2026-02-27 exposed that both the Next.js route AND the Edge Function had independent copies of the tz_string parser, each with their own bugs.
+
+### The Proposed Migration
+
+Replace the `time_zones` table tz_string with proper structured schedule records:
+
+**New `shifts` table:**
+```sql
+CREATE TABLE shifts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL,                    -- "Night Shift 8PM-5AM"
+  start_time  TIME NOT NULL,                    -- '20:00' (PKT, local time)
+  end_time    TIME NOT NULL,                    -- '05:00' (PKT, next day if < start)
+  working_days INT[] NOT NULL,                  -- {1,2,3,4,5} (0=Sun, 6=Sat)
+  is_overnight BOOLEAN GENERATED ALWAYS AS     -- auto-computed
+                (end_time < start_time) STORED,
+  buffer_minutes INT NOT NULL DEFAULT 30,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Calculation becomes trivial:**
+```
+1. Look up employee's shift for that weekday (check working_days array)
+2. shiftStartUTC = date + start_time - 5h  (simple subtraction)
+3. shiftEndUTC   = date + end_time   - 5h  (if is_overnight: +24h to end)
+4. Match allPunches within [startUTC - buffer, endUTC + 1h]
+5. isLate = firstPunch > startUTC + buffer
+```
+
+No encoding, no parsing, no offset arithmetic bugs, no header issues.
+
+### Why Not Now
+
+- **Not urgent:** Current system is functional after 2026-02-27 fixes (Edge Function v4)
+- **Migration cost:** Requires rewriting `time_zones` table, all 4+ parsers (Next.js route, Edge Function, schedules UI, employee-schedule API), and migrating 12+ existing tz_string records
+- **Risk:** Large surface area rewrite in a production system with 8K+ attendance logs already calculated
+- **Do it when:** Building the Visual Shift Builder (roadmap item #9) or Payslip feature — those already require touching the schedule system
+
+### ZK Timestamp Concern
+
+The timezone complexity of ZK devices is **separate** from the schedule format. Regardless of schedule format:
+- ZK punches come in UTC (after our sync route correction)
+- We convert to PKT for display only
+- Schedule comparison always happens in UTC space
+
+The tz_string is the **schedule definition format** — not the timestamp handling. Fixing one does not affect the other.
+
+### Migration Checklist (for when we do it)
+
+- [ ] Create `shifts` table + seed data from existing tz_strings
+- [ ] Update `calculateForDateRange` in `/api/reports/daily-work-time/route.js`
+- [ ] Update Edge Function `process-attendance-queue`
+- [ ] Update Schedules page UI (builder + display)
+- [ ] Update `employee-schedule` API `/api/hr/employee-schedule`
+- [ ] Update schedule overrides to reference `shifts.id` instead of `time_zones.id`
+- [ ] Keep `time_zones` table with old data for 30-day parallel run, then drop
+- [ ] Queue full recalculation for all employees after migration
+
+---
+
+## 🔧 Bug Fixes Log (2026-02-27 Session)
+
+> Ramzan timing incident — root cause analysis and all fixes applied
+
+### Root Cause
+The Ramzan schedule override (`active_from = 2025-02-19`) had the **wrong year** (2025 instead of 2026), retroactively applying the Ramzan Night schedule to a full year of history for 13 employees.
+
+Additionally, `calculateForDateRange` (Next.js) and the Edge Function both read `individual_tz_1` directly from the employee row — unaware of schedule override date boundaries. This meant pre-Ramzan dates were calculated with the Ramzan schedule and vice versa.
+
+### Fixes Applied
+1. **DB:** Corrected `active_from = 2026-02-19` for all 13 affected employees' overrides
+2. **Code (Next.js):** `calculateForDateRange` now queries `schedule_overrides` and resolves the correct tz_id per date (inside override window → override tz; outside → original tz / dept default)
+3. **Edge Function v3:** Added same `schedule_overrides` date-aware resolution + fixed `offset = 4 + dayOfWeek * 8` → `offset = dayOfWeek * 8` (no header in tz_string)
+4. **Edge Function v4:** Fixed overnight shift end time calculation — `endUTC` must not have `+24h` added when PKT→UTC conversion wraps via `+1440min`, as this was pushing the Feb23 night shift window into Feb24 and stealing the opening punch of the Feb24 shift
+5. **Burst Drain API:** Fixed PostgREST limitation — `.order().limit()` not supported on `.update()` queries; replaced with SELECT-then-UPDATE-by-IDs pattern
+6. **Queue Status API:** Fixed Supabase 1000-row default page limit — replaced row-fetch-then-count with parallel `COUNT` queries per status
+7. **Schedule Overrides API:** Added 60-day lookback guard — rejects `active_from` dates more than 60 days in the past to prevent wrong-year typos
+8. **Schedule Overrides API:** Both POST (assign) and DELETE (revert) now kick Edge Function burst after queuing, so recalculation starts immediately instead of waiting for next device sync
+

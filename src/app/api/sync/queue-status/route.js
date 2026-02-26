@@ -3,60 +3,59 @@ import { supabase } from '@/lib/supabase'
 
 /**
  * GET /api/sync/queue-status
- * Returns current state of the attendance_recalc_queue for the last 15 minutes.
- * Used by the dashboard's SyncProgressBanner to show real-time recalculation progress.
- * 
- * Response:
- *   { isActive, pending, processing, done, total, percent }
- * 
- * isActive = true when there are pending or processing items → show the banner
- * isActive = false when queue is empty → hide the banner
+ * Returns global state of the attendance_recalc_queue using COUNT queries.
+ * Avoids Supabase's 1000-row default page limit by counting per-status.
  */
 export async function GET() {
     try {
-        // Look at queue activity in the last 15 minutes only
-        // This gives a meaningful "session" for progress tracking.
-        // Items older than 15 min are ignored (they're from a previous sync cycle).
         const windowStart = new Date(Date.now() - 15 * 60 * 1000).toISOString()
 
-        const { data, error } = await supabase
-            .from('attendance_recalc_queue')
-            .select('status')
-            .gte('queued_at', windowStart)
+        // Count each status individually to avoid 1000-row Supabase page limit
+        const [pendingRes, processingRes, doneRes, failedRes, totalRes, winPendingRes, winProcessingRes] = await Promise.all([
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'processing'),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'done'),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending').gte('queued_at', windowStart),
+            supabase.from('attendance_recalc_queue').select('id', { count: 'exact', head: true }).eq('status', 'processing').gte('queued_at', windowStart),
+        ])
 
-        if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 })
+        // Check for errors
+        const errors = [pendingRes, processingRes, doneRes, failedRes, totalRes].filter(r => r.error)
+        if (errors.length > 0) {
+            return NextResponse.json({ error: errors[0].error.message }, { status: 500 })
         }
 
-        const rows = data || []
-        const pending = rows.filter(r => r.status === 'pending').length
-        const processing = rows.filter(r => r.status === 'processing').length
-        const done = rows.filter(r => r.status === 'done').length
-        const failed = rows.filter(r => r.status === 'failed').length
-        const total = pending + processing + done + failed
+        const pending = pendingRes.count || 0
+        const processing = processingRes.count || 0
+        const done = doneRes.count || 0
+        const failed = failedRes.count || 0
+        const total = totalRes.count || 0
+        const completed = done + failed
 
-        // Percentage of work completed
-        const percent = total === 0 ? 100 : Math.round(((done + failed) / total) * 100)
-
-        // Active = there's still work in progress in this window
+        const percent = total === 0 ? 100 : Math.round((completed / total) * 100)
         const isActive = (pending + processing) > 0
 
+        // Banner: only show if there's RECENT activity (last 15 min)
+        const winPending = winPendingRes.count || 0
+        const winProcessing = winProcessingRes.count || 0
+        const showBanner = (winPending + winProcessing) > 0
+
         return NextResponse.json({
-            isActive,
+            isActive: showBanner,
             pending,
             processing,
             done,
             failed,
             total,
             percent,
-            // Human-readable status message
             message: isActive
-                ? `Updating attendance data… ${done} of ${total} complete`
+                ? `Updating attendance data… ${completed} of ${total} complete`
                 : total > 0
                     ? `Attendance data up to date (${done} records synced)`
                     : null,
         }, {
-            // Never cache this — must be fresh on every poll
             headers: { 'Cache-Control': 'no-store' }
         })
     } catch (err) {

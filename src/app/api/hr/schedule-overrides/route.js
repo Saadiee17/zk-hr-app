@@ -2,6 +2,24 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSession, isAdmin } from '@/lib/auth'
 
+const EDGE_FUNCTION_URL = 'https://pshttookanrjlrmwhqnt.functions.supabase.co/process-attendance-queue'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+
+// Fire N parallel Edge Function calls to drain the recalc queue quickly.
+// Same pattern as /api/sync — fire-and-forget, never awaited.
+function kickEdgeFunctionBurst(queueSize) {
+    const burstCount = Math.min(30, Math.max(1, Math.ceil(queueSize / 10)))
+    const authHeader = `Bearer ${SUPABASE_ANON_KEY}`
+    for (let i = 0; i < burstCount; i++) {
+        fetch(EDGE_FUNCTION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+            body: '{}',
+        }).catch(err => console.warn(`[OVERRIDE] Edge Function kick ${i + 1}/${burstCount} failed (non-fatal):`, err.message))
+    }
+    console.log(`[OVERRIDE] Fired ${burstCount} Edge Function burst calls for ${queueSize} queued items`)
+}
+
 // GET /api/hr/schedule-overrides
 // Returns all active overrides with employee + schedule info
 export async function GET(req) {
@@ -50,6 +68,19 @@ export async function POST(req) {
 
         if (!employee_ids?.length || !override_tz_id || !active_from || !active_until) {
             return NextResponse.json({ error: 'employee_ids, override_tz_id, active_from, active_until are required' }, { status: 400 })
+        }
+
+        // SAFETY GUARD: active_from must not be more than 60 days in the past.
+        // This prevents the "wrong year" bug (e.g. typing 2025 instead of 2026)
+        // from retroactively applying an override to an entire year of history.
+        const _today = new Date()
+        _today.setUTCHours(0, 0, 0, 0)
+        const _fromDate = new Date(active_from)
+        const _daysInPast = (_today - _fromDate) / (1000 * 60 * 60 * 24)
+        if (_daysInPast > 60) {
+            return NextResponse.json({
+                error: `active_from (${active_from}) is more than 60 days in the past. Did you enter the wrong year? Overrides retroactive beyond 60 days are blocked to protect historical data.`
+            }, { status: 400 })
         }
 
         // Fetch current individual_tz_1 for each employee (to save as original)
@@ -116,11 +147,15 @@ export async function POST(req) {
             await supabase
                 .from('attendance_recalc_queue')
                 .upsert(queueRows, { onConflict: 'employee_id,date', ignoreDuplicates: false })
+
+            // Kick Edge Function burst to drain the queue immediately
+            // (same as sync route does — without this, items sit idle until next sync)
+            kickEdgeFunctionBurst(queueRows.length)
         }
 
         return NextResponse.json({
             success: true,
-            message: `Override applied to ${employees.length} employee(s). ${queueRows.length} days queued for recalculation.`,
+            message: `Override applied to ${employees.length} employee(s). ${queueRows.length} days queued for recalculation — processing now.`,
             employees_updated: employees.length,
             days_queued: queueRows.length,
         })
@@ -196,11 +231,14 @@ export async function DELETE(req) {
             await supabase
                 .from('attendance_recalc_queue')
                 .upsert(queueRows, { onConflict: 'employee_id,date', ignoreDuplicates: false })
+
+            // Kick burst to drain immediately — no waiting for next sync
+            kickEdgeFunctionBurst(queueRows.length)
         }
 
         return NextResponse.json({
             success: true,
-            message: `${activeOverrides.length} override(s) reverted. ${queueRows.length} days queued for recalculation.`,
+            message: `${activeOverrides.length} override(s) reverted. ${queueRows.length} days queued for recalculation — processing now.`,
             reverted: activeOverrides.length,
             days_queued: queueRows.length,
         })

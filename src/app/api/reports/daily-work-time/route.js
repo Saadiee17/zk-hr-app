@@ -1108,11 +1108,49 @@ export const calculateForDateRange = async (employeeId, startDateStr, endDateStr
     }]
   }
 
-  // Collect ALL assigned time zone IDs (individual overrides first, then department schedules)
+  // ── SCHEDULE-OVERRIDE DATE-AWARE RESOLUTION ──────────────────────────────
+  // The employee's individual_tz_1 may have been mutated by a schedule override
+  // (e.g. Ramzan Night). For dates OUTSIDE the override window we must use the
+  // ORIGINAL schedule, not the override schedule.
+  //
+  // Logic:
+  //   • Date within an override window  → use override_tz_id
+  //   • Date outside every override window → use original_tz_id (NULL = dept default)
+  //   • No overrides on record at all → use individual_tz_1 as-is
+  // ─────────────────────────────────────────────────────────────────────────
+  const { data: scheduleOverrides } = await supabase
+    .from('schedule_overrides')
+    .select('override_tz_id, original_tz_id, active_from, active_until')
+    .eq('employee_id', employeeId)
+    .order('created_at', { ascending: false })
+
+  // Use startDateStr as the representative date for this calculation call.
+  // The burst-drain always calls one day at a time so this is accurate.
+  const checkDate = startDateStr
+
+  let effectiveTz1 = emp.individual_tz_1 // fallback: no overrides
+
+  if (scheduleOverrides && scheduleOverrides.length > 0) {
+    const applicableOverride = scheduleOverrides.find(
+      ov => checkDate >= ov.active_from && checkDate <= ov.active_until
+    )
+
+    if (applicableOverride) {
+      // Date is INSIDE an override window → use the override schedule
+      effectiveTz1 = applicableOverride.override_tz_id
+      console.log(`[daily-work-time] ${checkDate}: inside override, tz_id=${applicableOverride.override_tz_id}`)
+    } else {
+      // Date is OUTSIDE any override window → restore original pre-override schedule.
+      // original_tz_id=NULL means the employee used the dept default before the override.
+      effectiveTz1 = scheduleOverrides[0].original_tz_id // may be null → dept fallback below
+      console.log(`[daily-work-time] ${checkDate}: outside override, restoring original tz_id=${effectiveTz1}`)
+    }
+  }
+
+  // Collect ALL assigned time zone IDs using the date-resolved effective tz
   const assignedTzIds = []
 
-  // Add individual time zones (in order of priority)
-  if (emp.individual_tz_1) assignedTzIds.push(emp.individual_tz_1)
+  if (effectiveTz1) assignedTzIds.push(effectiveTz1)
   if (emp.individual_tz_2) assignedTzIds.push(emp.individual_tz_2)
   if (emp.individual_tz_3) assignedTzIds.push(emp.individual_tz_3)
 
