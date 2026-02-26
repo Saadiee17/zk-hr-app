@@ -142,9 +142,13 @@ export default function DepartmentsPage() {
     fetchActiveOverrides()
   }, [fetchDepartments, fetchTimeZones, fetchEmployees, fetchActiveOverrides])
 
-  // ─── Override tz options — only "special" shifts (id >= 50) ───
+  // ─── Override tz options — Ramzan shifts identified by name ───
+  // IDs 11 (Morning) and 12 (Night), determined dynamically from company_settings
+  const ramzanTzIds = new Set(
+    timeZones.filter(tz => tz.name?.toLowerCase().includes('ramzan')).map(tz => tz.id)
+  )
   const overrideShiftOptions = timeZones
-    .filter(tz => tz.id >= 50)
+    .filter(tz => ramzanTzIds.has(tz.id))
     .map(tz => ({ value: String(tz.id), label: tz.name }))
 
   const tzOptions = timeZones.map(t => ({ value: String(t.id), label: `${t.id} - ${t.name}` }))
@@ -447,7 +451,7 @@ export default function DepartmentsPage() {
                     <Box>
                       <Text size="sm" fw={700} mb="xs">1. Choose Shift Template</Text>
                       <SimpleGrid cols={2} spacing="sm">
-                        {timeZones.filter(tz => tz.id >= 50).map(tz => (
+                        {timeZones.filter(tz => ramzanTzIds.has(tz.id)).map(tz => (
                           <Box
                             key={tz.id}
                             onClick={() => setSelectedShift(String(tz.id))}
@@ -461,14 +465,14 @@ export default function DepartmentsPage() {
                             }}
                           >
                             <Group gap="xs" mb={4}>
-                              <ThemeIcon size="sm" radius="xl" variant="light" color={tz.id === 51 ? 'yellow' : 'indigo'}>
-                                {tz.id === 51 ? <IconSun size={12} /> : <IconMoon size={12} />}
+                              <ThemeIcon size="sm" radius="xl" variant="light" color={tz.buffer_time_minutes > 30 ? 'yellow' : 'indigo'}>
+                                {tz.buffer_time_minutes > 30 ? <IconSun size={12} /> : <IconMoon size={12} />}
                               </ThemeIcon>
                               <Text size="sm" fw={700}>{tz.name}</Text>
                               {selectedShift === String(tz.id) && <IconCheck size={14} color="var(--mantine-color-violet-5)" style={{ marginLeft: 'auto' }} />}
                             </Group>
                             <Text size="xs" c="dimmed">
-                              {tz.id === 51 ? 'Flexible 7am–10am start · 7 hour shift' : '9:00 PM → 4:00 AM · Fixed night shift'}
+                              {tz.buffer_time_minutes > 30 ? 'Flexible 7am–10am start · complete 7-hour shift' : '9:00 PM → 4:00 AM · Fixed night shift'}
                             </Text>
                             {tz.buffer_time_minutes !== 30 && (
                               <Badge size="xs" color="orange" variant="light" mt={6}>
@@ -477,9 +481,9 @@ export default function DepartmentsPage() {
                             )}
                           </Box>
                         ))}
-                        {timeZones.filter(tz => tz.id >= 50).length === 0 && (
-                          <Alert color="orange" radius="md" icon={<IconAlertCircle size={16} />} title="Migration needed">
-                            Run <code>ramzan_migration.sql</code> in Supabase SQL Editor first.
+                        {timeZones.filter(tz => ramzanTzIds.has(tz.id)).length === 0 && (
+                          <Alert color="orange" radius="md" icon={<IconAlertCircle size={16} />} title="No Ramzan shifts found">
+                            No shifts with &ldquo;Ramzan&rdquo; in their name were found in the database. Migration may still be needed.
                           </Alert>
                         )}
                       </SimpleGrid>
