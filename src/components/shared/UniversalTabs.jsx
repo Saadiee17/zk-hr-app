@@ -7,7 +7,7 @@ export function UniversalTabs({ children, ...props }) {
             variant="pills"
             radius="md"
             styles={{
-                list: { backgroundColor: 'white', padding: '4px', borderRadius: '12px', border: '1px solid #e9ecef' },
+                list: { backgroundColor: 'var(--mantine-color-body)', padding: '4px', borderRadius: '12px', border: '1px solid var(--mantine-color-default-border)' },
                 tab: { fontWeight: 600 }
             }}
             {...props}

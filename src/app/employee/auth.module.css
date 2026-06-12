@@ -1,0 +1,393 @@
+/* ── Shared auth screen styles (login + setup-password) ─────────────────── */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  background-color: #060b18;
+}
+
+/* ── Left brand panel ── */
+.brandPanel {
+  position: relative;
+  flex: 1 1 52%;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 56px;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 800px at 85% -10%, rgba(34, 139, 230, 0.22), transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, rgba(21, 170, 191, 0.18), transparent 55%),
+    linear-gradient(160deg, #0a1428 0%, #060b18 60%, #081020 100%);
+}
+
+@media (min-width: 62em) {
+  .brandPanel {
+    display: flex;
+  }
+}
+
+/* drifting aurora blobs */
+.brandPanel::before,
+.brandPanel::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.brandPanel::before {
+  width: 420px;
+  height: 420px;
+  top: -120px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(34, 139, 230, 0.5), transparent 70%);
+  animation: drift 14s ease-in-out infinite alternate;
+}
+
+.brandPanel::after {
+  width: 360px;
+  height: 360px;
+  bottom: -100px;
+  left: -60px;
+  background: radial-gradient(circle, rgba(21, 170, 191, 0.4), transparent 70%);
+  animation: drift 18s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-50px, 50px) scale(1.15);
+  }
+}
+
+/* fine dot grid texture over the panel */
+.dotGrid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 75%);
+  pointer-events: none;
+}
+
+.brandContent {
+  position: relative;
+  z-index: 1;
+}
+
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brandIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: #66d9e8;
+  background: linear-gradient(145deg, rgba(34, 139, 230, 0.25), rgba(21, 170, 191, 0.15));
+  border: 1px solid rgba(102, 217, 232, 0.25);
+  box-shadow:
+    0 0 24px rgba(34, 139, 230, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brandName {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #f1f5fb;
+}
+
+.brandTag {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: rgba(148, 184, 230, 0.75);
+}
+
+.headline {
+  margin-top: 96px;
+  max-width: 480px;
+  font-size: clamp(34px, 3.6vw, 52px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -2px;
+  color: #f1f5fb;
+}
+
+.headlineAccent {
+  background: linear-gradient(90deg, #4dabf7, #66d9e8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.subline {
+  margin-top: 18px;
+  max-width: 420px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgba(173, 196, 230, 0.8);
+}
+
+/* live clock */
+.clock {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+.clockTime {
+  font-size: clamp(38px, 4vw, 56px);
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: #e7f0fb;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px rgba(77, 171, 247, 0.4);
+}
+
+.clockColon {
+  animation: blink 1s steps(1) infinite;
+  color: #4dabf7;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.clockDate {
+  margin-top: 6px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(148, 184, 230, 0.65);
+}
+
+.chipRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(199, 218, 242, 0.9);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.chipDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #51cf66;
+  box-shadow: 0 0 8px #51cf66;
+}
+
+/* ── Right form panel ── */
+.formPanel {
+  flex: 1 1 48%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background-color: #fafbfd;
+  position: relative;
+}
+
+:global([data-mantine-color-scheme='dark']) .formPanel {
+  background-color: #101218;
+}
+
+/* faint top glow echoing the brand colors */
+.formPanel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #228be6, #15aabf, #228be6);
+  opacity: 0.9;
+}
+
+@media (min-width: 62em) {
+  .formPanel::before {
+    display: none;
+  }
+}
+
+.formColumn {
+  width: 100%;
+  max-width: 408px;
+}
+
+/* compact brand header shown when the left panel is hidden */
+.mobileBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+@media (min-width: 62em) {
+  .mobileBrand {
+    display: none;
+  }
+}
+
+.formTitle {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: #101828;
+}
+
+:global([data-mantine-color-scheme='dark']) .formTitle {
+  color: #f1f5fb;
+}
+
+.formSubtitle {
+  margin-top: 6px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: #5c6878;
+}
+
+:global([data-mantine-color-scheme='dark']) .formSubtitle {
+  color: #98a4b5;
+}
+
+.input input {
+  background-color: #fff;
+  border: 1px solid #e3e8ef;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+:global([data-mantine-color-scheme='dark']) .input input {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.input input:focus {
+  border-color: #228be6;
+  box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.15);
+}
+
+.submitButton {
+  background: linear-gradient(90deg, #1c7ed6, #15aabf);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+  box-shadow: 0 8px 20px -6px rgba(28, 126, 214, 0.5);
+}
+
+.submitButton:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -6px rgba(28, 126, 214, 0.55);
+}
+
+.submitButton:active {
+  transform: translateY(0);
+}
+
+.helpDivider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.helpDivider::before,
+.helpDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e9edf3;
+}
+
+:global([data-mantine-color-scheme='dark']) .helpDivider::before,
+:global([data-mantine-color-scheme='dark']) .helpDivider::after {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.helpDividerLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #98a4b5;
+}
+
+:global([data-mantine-color-scheme='dark']) .helpDividerLabel {
+  color: #6b7686;
+}
+
+/* staggered entrance */
+.fadeUp {
+  opacity: 0;
+  animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.delay1 {
+  animation-delay: 0.05s;
+}
+.delay2 {
+  animation-delay: 0.14s;
+}
+.delay3 {
+  animation-delay: 0.23s;
+}
+.delay4 {
+  animation-delay: 0.32s;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brandPanel::before,
+  .brandPanel::after,
+  .clockColon,
+  .fadeUp {
+    animation: none;
+  }
+  .fadeUp {
+    opacity: 1;
+  }
+}

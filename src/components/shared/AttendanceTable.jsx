@@ -144,10 +144,12 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
       }}
     >
       <LoadingOverlay visible={loading} overlayProps={{ blur: 2 }} />
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <Table
         verticalSpacing="md"
         horizontalSpacing="lg"
         highlightOnHover
+        style={{ minWidth: 680 }}
       >
         <Table.Thead>
           <Table.Tr style={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
@@ -181,6 +183,7 @@ export function AttendanceTable({ data = [], loading = false, filteredData = nul
           )}
         </Table.Tbody>
       </Table>
+      </div>
     </Paper>
   )
 }

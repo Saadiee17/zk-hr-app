@@ -134,11 +134,38 @@ export function AppShellWrapper({ children }) {
           transition: 'margin 0.3s ease',
         }}
       >
-        {/* Mobile Burger Toggle */}
+        {/* Mobile Top Bar */}
         {isMobile && (
-          <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 99 }}>
+          <header
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 150,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              height: 56,
+              padding: '0 16px',
+              backgroundColor: isDark
+                ? 'rgba(20, 21, 23, 0.92)'
+                : 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderBottom: isDark
+                ? '1px solid rgba(255, 255, 255, 0.08)'
+                : '1px solid rgba(0, 0, 0, 0.06)',
+            }}
+          >
             <Burger opened={mobileOpened} onClick={toggleMobile} size="sm" />
-          </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: '-0.3px', color: isDark ? '#f1f5fb' : '#101828' }}>
+                ZK HR
+              </span>
+              <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: '1.5px', textTransform: 'uppercase', color: isDark ? '#8b93a7' : '#98a2b3' }}>
+                Attendance OS
+              </span>
+            </div>
+          </header>
         )}
 
         {React.Children.map(children, child => {

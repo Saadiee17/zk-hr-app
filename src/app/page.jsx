@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import {
   Container,
   Title,
@@ -27,7 +27,8 @@ import {
   Avatar,
   ScrollArea,
   Tooltip,
-  Center
+  Center,
+  useComputedColorScheme
 } from '@mantine/core'
 import {
   IconRefresh,
@@ -57,7 +58,46 @@ import { UniversalTable } from '@/components/shared/UniversalTable'
 import { DepartmentStatusGrid } from '@/components/dashboard/DepartmentStatus'
 import { SyncProgressBanner } from '@/components/shared/SyncProgressBanner'
 
+// Ticks every second — memoized so only the clock re-renders, not the dashboard
+const HeroClock = memo(function HeroClock() {
+  const [now, setNow] = useState(null)
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setNow(new Date()))
+    const timer = setInterval(() => setNow(new Date()), 1000)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearInterval(timer)
+    }
+  }, [])
+
+  const pad = (n) => String(n).padStart(2, '0')
+
+  return (
+    <div style={{ textAlign: 'right' }}>
+      <Text
+        ff="monospace"
+        fw={600}
+        lh={1}
+        style={{
+          fontSize: 30,
+          color: '#e7f0fb',
+          letterSpacing: 2,
+          fontVariantNumeric: 'tabular-nums',
+          textShadow: '0 0 24px rgba(77, 171, 247, 0.45)',
+        }}
+      >
+        {now ? `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}` : '--:--:--'}
+      </Text>
+      <Text size="10px" fw={700} tt="uppercase" ls={2.5} mt={6} style={{ color: 'rgba(148, 184, 230, 0.65)', textAlign: 'right' }}>
+        Local time
+      </Text>
+    </div>
+  )
+})
+
 function Dashboard({ isCollapsed }) {
+  const isDark = useComputedColorScheme('light') === 'dark'
   // State for logs table
   const [logs, setLogs] = useState([])
   const [allLogs, setAllLogs] = useState([]) // Store all logs for search filtering
@@ -772,38 +812,82 @@ function Dashboard({ isCollapsed }) {
         // This ensures the dashboard reflects the freshest data without a full page reload
         fetchAttendanceData && fetchAttendanceData()
       }} />
-      <Container fluid pt={60} pb="xl" px={24}>
-        {/* Header Section */}
-        <Stack gap="lg" mb={30}>
-          <Group justify="space-between" align="flex-end">
+      <Container fluid pt={{ base: 'md', sm: 60 }} pb="xl" px={{ base: 16, sm: 24 }}>
+        {/* Header Section — dark "Attendance OS" hero */}
+        <Paper
+          radius={24}
+          p={{ base: 20, sm: 32 }}
+          mb={32}
+          style={{
+            position: 'relative',
+            overflow: 'hidden',
+            border: '1px solid rgba(102, 217, 232, 0.12)',
+            background: `
+              radial-gradient(900px 400px at 90% -20%, rgba(34, 139, 230, 0.28), transparent 60%),
+              radial-gradient(700px 400px at -10% 130%, rgba(21, 170, 191, 0.2), transparent 55%),
+              linear-gradient(160deg, #0a1428 0%, #060b18 60%, #081020 100%)
+            `,
+          }}
+        >
+          {/* dot-grid texture */}
+          <Box
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: 'radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+              maskImage: 'radial-gradient(ellipse 80% 100% at 70% 0%, black 30%, transparent 80%)',
+              WebkitMaskImage: 'radial-gradient(ellipse 80% 100% at 70% 0%, black 30%, transparent 80%)',
+              pointerEvents: 'none',
+            }}
+          />
+          <Group justify="space-between" align="flex-end" style={{ position: 'relative' }}>
             <div>
-              <Group gap="xs" mb={4}>
-                <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
-                  <IconFingerprint size={14} />
+              <Group gap="sm" mb={12}>
+                <ThemeIcon
+                  size={34}
+                  radius={10}
+                  variant="light"
+                  style={{
+                    color: '#66d9e8',
+                    background: 'linear-gradient(145deg, rgba(34,139,230,0.25), rgba(21,170,191,0.15))',
+                    border: '1px solid rgba(102, 217, 232, 0.25)',
+                    boxShadow: '0 0 18px rgba(34, 139, 230, 0.35)',
+                  }}
+                >
+                  <IconFingerprint size={18} stroke={1.6} />
                 </ThemeIcon>
-                <Text c="dimmed" size="xs" fw={700} tt="uppercase" ls={1.5}>
+                <Text size="xs" fw={700} tt="uppercase" ls={2.5} style={{ color: 'rgba(148, 184, 230, 0.75)' }}>
                   Personnel Management System
                 </Text>
               </Group>
-              <Title order={1} style={{ fontWeight: 900, fontSize: '2.85rem', letterSpacing: '-1.5px', color: '#1a1b1e', lineHeight: 1.1 }}>
+              <Title order={1} style={{ fontWeight: 900, fontSize: 'clamp(1.9rem, 6vw, 2.85rem)', letterSpacing: '-1.5px', color: '#f1f5fb', lineHeight: 1.05 }}>
                 HR Operations
               </Title>
-              <Text size="sm" c="dimmed" fw={600}>
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </Text>
-              {lastSyncTime && (
-                <Group gap={6} mt={4}>
-                  <Indicator color="green" size={6} processing={syncing} offset={2}>
-                    <IconRefresh size={14} className={syncing ? 'mantine-rotate' : ''} style={{ opacity: 0.6 }} />
-                  </Indicator>
-                  <Text size="xs" fw={600} c="dimmed" tt="uppercase">
-                    Sync: {formatUTC12HourTime(lastSyncTime.toISOString())}
-                  </Text>
-                </Group>
-              )}
+              <Group gap={10} mt={8}>
+                <Text size="sm" fw={600} style={{ color: 'rgba(173, 196, 230, 0.85)' }}>
+                  {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                </Text>
+                {lastSyncTime && (
+                  <>
+                    <Box w={4} h={4} style={{ borderRadius: '50%', background: 'rgba(148, 184, 230, 0.4)' }} />
+                    <Group gap={6}>
+                      <Indicator color="green" size={6} processing={syncing} offset={2}>
+                        <IconRefresh size={13} className={syncing ? 'mantine-rotate' : ''} style={{ color: '#66d9e8' }} />
+                      </Indicator>
+                      <Text size="xs" fw={700} tt="uppercase" ff="monospace" ls={1} style={{ color: '#8fb8e6' }}>
+                        Sync {formatUTC12HourTime(lastSyncTime.toISOString())}
+                      </Text>
+                    </Group>
+                  </>
+                )}
+              </Group>
             </div>
-            <Group gap="md">
-              <Paper withBorder p="xs" radius="md" style={{ background: '#f8f9fa', borderStyle: 'dashed' }}>
+            <Group gap={{ base: 'sm', sm: 'xl' }} align="flex-end" mt={{ base: 8, sm: 0 }}>
+              <Box visibleFrom="lg">
+                <HeroClock />
+              </Box>
+              <Paper p="6px 14px" radius="xl" style={{ background: 'rgba(255, 255, 255, 0.97)', boxShadow: '0 4px 16px rgba(0,0,0,0.25)' }}>
                 <Group gap="sm" wrap="nowrap">
                   {toYMD(selectedDate) !== toYMD(new Date()) && (
                     <Badge variant="dot" color="orange" size="xs" styles={{ root: { border: 'none' } }}>WORKING DAY</Badge>
@@ -815,8 +899,8 @@ function Dashboard({ isCollapsed }) {
                     leftSection={<IconCalendar size={16} />}
                     variant="unstyled"
                     size="sm"
-                    w={130}
-                    styles={{ input: { fontWeight: 700, padding: 0, minHeight: 'auto' } }}
+                    w={150}
+                    styles={{ input: { fontWeight: 700, padding: '0 0 0 28px', minHeight: 'auto' } }}
                   />
                 </Group>
               </Paper>
@@ -825,31 +909,31 @@ function Dashboard({ isCollapsed }) {
                 loading={syncing}
                 leftSection={<IconRefresh size={18} />}
                 size="md"
-                radius="lg"
-                color="blue"
-                variant="filled"
+                radius="xl"
+                variant="gradient"
+                gradient={{ from: 'blue.6', to: 'cyan.5', deg: 90 }}
                 style={{
-                  boxShadow: '0 8px 20px -4px rgba(34, 139, 230, 0.3)',
+                  boxShadow: '0 8px 24px -4px rgba(34, 139, 230, 0.5)',
                   height: '48px',
-                  paddingLeft: '24px',
-                  paddingRight: '24px'
+                  paddingLeft: '26px',
+                  paddingRight: '26px',
                 }}
               >
                 Sync Data
               </Button>
             </Group>
           </Group>
-        </Stack>
+        </Paper>
 
         {/* Attendance Intelligence Grid */}
         <Grid gutter="xl" mb={40} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' }}>
           {/* Main Attendance Pulse */}
           <Grid.Col span={{ base: 12, md: 8 }}>
-            <Paper withBorder p="xl" radius="lg" style={{
-              background: 'white',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
+            <Paper p="xl" radius={20} style={{
+              background: isDark ? 'var(--mantine-color-dark-6)' : 'white',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
               height: '100%',
-              border: '1px solid #eee'
+              border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #e9edf3'
             }}>
               <Stack gap="xl">
                 <Group justify="space-between" align="flex-start">
@@ -857,7 +941,16 @@ function Dashboard({ isCollapsed }) {
                     <Title order={3} fw={850} style={{ letterSpacing: '-0.5px' }}>Daily Attendance Pulse</Title>
                     <Text size="sm" c="dimmed">Real-time status tracking and punctuality health</Text>
                   </div>
-                  <Badge size="lg" radius="sm" variant="filled" color={metrics.attendanceRate > 85 ? 'teal' : 'orange'}>
+                  <Badge
+                    size="lg"
+                    radius="md"
+                    variant="gradient"
+                    gradient={
+                      metrics.attendanceRate > 85
+                        ? { from: 'teal.6', to: 'cyan.5', deg: 90 }
+                        : { from: 'orange.6', to: 'yellow.6', deg: 90 }
+                    }
+                  >
                     {metrics.attendanceRate}% Staffing Rate
                   </Badge>
                 </Group>
@@ -870,6 +963,7 @@ function Dashboard({ isCollapsed }) {
                       description="Active now"
                       color="blue"
                       icon={IconUserCheck}
+                      loading={metricsLoading}
                       clickable
                       onClick={() => setPresentModalOpen(true)}
                     />
@@ -881,6 +975,7 @@ function Dashboard({ isCollapsed }) {
                       description="Met schedule"
                       color="teal"
                       icon={IconClock}
+                      loading={metricsLoading}
                       clickable
                       onClick={() => setOnTimeModalOpen(true)}
                     />
@@ -892,6 +987,7 @@ function Dashboard({ isCollapsed }) {
                       description="Arrived late"
                       color="orange"
                       icon={IconAlertCircle}
+                      loading={metricsLoading}
                       clickable
                       onClick={() => setLateModalOpen(true)}
                     />
@@ -903,11 +999,53 @@ function Dashboard({ isCollapsed }) {
                       description="No record"
                       color="red"
                       icon={IconUserX}
+                      loading={metricsLoading}
                       clickable
                       onClick={() => setAbsentModalOpen(true)}
                     />
                   </Grid.Col>
                 </Grid>
+
+                {/* Workforce composition bar — one glance: who's on time, late, absent, or not started yet */}
+                {!metricsLoading && totalEmployees > 0 && (() => {
+                  const pending = Math.max(0, totalEmployees - metrics.onTime - metrics.late - metrics.absent)
+                  const segments = [
+                    { label: 'On-Time', count: metrics.onTime, color: 'var(--mantine-color-teal-5)' },
+                    { label: 'Delayed', count: metrics.late, color: 'var(--mantine-color-orange-5)' },
+                    { label: 'Absent', count: metrics.absent, color: 'var(--mantine-color-red-5)' },
+                    { label: 'Not started', count: pending, color: isDark ? 'var(--mantine-color-dark-4)' : 'var(--mantine-color-gray-3)' },
+                  ].filter(s => s.count > 0)
+                  return (
+                    <Box>
+                      <Group justify="space-between" mb={8}>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed" ls={1}>Workforce composition</Text>
+                        <Group gap="md">
+                          {segments.map(s => (
+                            <Group key={s.label} gap={5}>
+                              <Box w={8} h={8} style={{ borderRadius: '50%', backgroundColor: s.color }} />
+                              <Text size="xs" fw={600} c="dimmed">{s.label} · {s.count}</Text>
+                            </Group>
+                          ))}
+                        </Group>
+                      </Group>
+                      <Group gap={3} wrap="nowrap" style={{ height: 8 }}>
+                        {segments.map(s => (
+                          <Box
+                            key={s.label}
+                            style={{
+                              height: '100%',
+                              borderRadius: 100,
+                              flexGrow: s.count,
+                              flexBasis: 0,
+                              backgroundColor: s.color,
+                              transition: 'flex-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
+                            }}
+                          />
+                        ))}
+                      </Group>
+                    </Box>
+                  )
+                })()}
 
                 <Divider style={{ opacity: 0.6 }} />
 
@@ -948,10 +1086,13 @@ function Dashboard({ isCollapsed }) {
           {/* Management Shortcuts */}
           <Grid.Col span={{ base: 12, md: 4 }}>
             <Stack gap="lg" h="100%">
-              <Card withBorder padding="xl" radius="lg" style={{
+              <Card padding="xl" radius={20} style={{
                 flex: 1,
-                border: '1px solid #eee',
-                background: 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)'
+                border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #e9edf3',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
+                background: isDark
+                  ? 'linear-gradient(135deg, var(--mantine-color-dark-6) 0%, var(--mantine-color-dark-7) 100%)'
+                  : 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)'
               }}>
                 <Stack gap="xl">
                   <Group justify="space-between">
@@ -967,7 +1108,7 @@ function Dashboard({ isCollapsed }) {
                   <Stack gap="sm">
                     <Button
                       fullWidth
-                      variant="white"
+                      variant={isDark ? 'default' : 'white'}
                       color="blue"
                       size="md"
                       radius="md"
@@ -975,7 +1116,7 @@ function Dashboard({ isCollapsed }) {
                       component={Link}
                       href="/employees/manage"
                       styles={{
-                        root: { border: '1px solid #eef2f6', height: '52px' },
+                        root: { border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #eef2f6', height: '52px' },
                         inner: { justifyContent: 'flex-start' },
                         label: { fontSize: '15px', fontWeight: 600 }
                       }}
@@ -984,7 +1125,7 @@ function Dashboard({ isCollapsed }) {
                     </Button>
                     <Button
                       fullWidth
-                      variant="white"
+                      variant={isDark ? 'default' : 'white'}
                       color="violet"
                       size="md"
                       radius="md"
@@ -992,7 +1133,7 @@ function Dashboard({ isCollapsed }) {
                       component={Link}
                       href="/device-config"
                       styles={{
-                        root: { border: '1px solid #eef2f6', height: '52px' },
+                        root: { border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #eef2f6', height: '52px' },
                         inner: { justifyContent: 'flex-start' },
                         label: { fontSize: '15px', fontWeight: 600 }
                       }}
@@ -1002,14 +1143,14 @@ function Dashboard({ isCollapsed }) {
                     <Indicator label={pendingLeaves.length} color="red" size={20} disabled={pendingLeaves.length === 0} offset={2} withBorder processing>
                       <Button
                         fullWidth
-                        variant="white"
+                        variant={isDark ? 'default' : 'white'}
                         color="orange"
                         size="md"
                         radius="md"
                         leftSection={<ThemeIcon size={24} radius="sm" color="orange" variant="light"><IconAlertCircle size={14} /></ThemeIcon>}
                         onClick={() => setAlertsModalOpen(true)}
                         styles={{
-                          root: { border: '1px solid #eef2f6', height: '52px' },
+                          root: { border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #eef2f6', height: '52px' },
                           inner: { justifyContent: 'flex-start' },
                           label: { fontSize: '15px', fontWeight: 600 }
                         }}
@@ -1023,13 +1164,13 @@ function Dashboard({ isCollapsed }) {
 
                   <Grid gutter="sm">
                     <Grid.Col span={6}>
-                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'white' }}>
+                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'var(--mantine-color-body)' }}>
                         <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>Workforce</Text>
                         <Text size="xl" fw={900} c="indigo">{totalEmployees}</Text>
                       </Paper>
                     </Grid.Col>
                     <Grid.Col span={6}>
-                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'white', cursor: 'pointer' }} onClick={() => setPunchOutMissingModalOpen(true)}>
+                      <Paper withBorder p="md" radius="md" ta="center" style={{ background: 'var(--mantine-color-body)', cursor: 'pointer' }} onClick={() => setPunchOutMissingModalOpen(true)}>
                         <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>Missed Out</Text>
                         <Text size="xl" fw={900} c="yellow">{metrics.punchOutMissing}</Text>
                       </Paper>
@@ -1057,22 +1198,55 @@ function Dashboard({ isCollapsed }) {
                   <Text fw={800} size="lg">Departmental Overview</Text>
                   <Text size="xs" c="dimmed" fw={500}>Live status of personnel across all units</Text>
                 </div>
-                <TextInput
-                  placeholder="Seach personnel or unit..."
-                  leftSection={<IconSearch size={14} />}
-                  value={globalSearchQuery}
-                  onChange={(e) => setGlobalSearchQuery(e.currentTarget.value)}
-                  size="xs"
-                  radius="md"
-                  w={280}
-                  styles={{
-                    input: {
-                      backgroundColor: 'white',
-                      border: '1px solid #eee',
-                      fontWeight: 600
-                    }
-                  }}
-                />
+                <Group gap="xs">
+                  <Tooltip label="Expand all departments" withArrow>
+                    <Button
+                      variant="default"
+                      size="xs"
+                      radius="md"
+                      leftSection={<IconChevronDown size={14} />}
+                      onClick={() => {
+                        const all = {}
+                        departmentEmployees.forEach(d => { all[d.department] = true })
+                        setExpandedDepartments(all)
+                      }}
+                    >
+                      Expand all
+                    </Button>
+                  </Tooltip>
+                  <Tooltip label="Collapse all departments" withArrow>
+                    <Button
+                      variant="default"
+                      size="xs"
+                      radius="md"
+                      leftSection={<IconChevronUp size={14} />}
+                      onClick={() => {
+                        // explicit all-false map — an empty map would trigger the auto-expand effect
+                        const none = {}
+                        departmentEmployees.forEach(d => { none[d.department] = false })
+                        setExpandedDepartments(none)
+                      }}
+                    >
+                      Collapse all
+                    </Button>
+                  </Tooltip>
+                  <TextInput
+                    placeholder="Search personnel or unit..."
+                    leftSection={<IconSearch size={14} />}
+                    value={globalSearchQuery}
+                    onChange={(e) => setGlobalSearchQuery(e.currentTarget.value)}
+                    size="xs"
+                    radius="md"
+                    w={280}
+                    styles={{
+                      input: {
+                        backgroundColor: 'var(--mantine-color-body)',
+                        border: '1px solid var(--mantine-color-default-border)',
+                        fontWeight: 600
+                      }
+                    }}
+                  />
+                </Group>
               </Group>
 
               <Stack gap="lg">
@@ -1170,11 +1344,11 @@ function Dashboard({ isCollapsed }) {
               }
               styles={{
                 content: {
-                  backgroundColor: '#ffffff',
+                  backgroundColor: 'var(--mantine-color-body)',
                   boxShadow: '0 30px 60px -10px rgba(0,0,0,0.12)',
-                  border: '1px solid rgba(0,0,0,0.08)'
+                  border: '1px solid var(--mantine-color-default-border)'
                 },
-                header: { paddingBottom: '24px', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+                header: { paddingBottom: '24px', borderBottom: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)' }
               }}
             >
               {modal.data.length === 0 ? (
@@ -1203,7 +1377,7 @@ function Dashboard({ isCollapsed }) {
                             textDecoration: 'none',
                             color: 'inherit',
                             transition: 'all 0.15s ease',
-                            backgroundColor: '#fafafa',
+                            backgroundColor: isDark ? 'var(--mantine-color-dark-6)' : '#fafafa',
                           }}
                           className="hover-card-minimal"
                         >
@@ -1245,13 +1419,13 @@ function Dashboard({ isCollapsed }) {
                               {(emp.inTime || emp.outTime) && (
                                 <Group gap={4} mt={8}>
                                   {emp.inTime && (
-                                    <Group gap={4} px={8} py={2} bg="white" style={{ borderRadius: '4px', border: '1px solid #eee' }}>
+                                    <Group gap={4} px={8} py={2} bg="var(--mantine-color-body)" style={{ borderRadius: '4px', border: '1px solid var(--mantine-color-default-border)' }}>
                                       <Text size="9px" fw={800} c="blue.8" tt="uppercase">In</Text>
                                       <Text size="xs" ff="monospace" fw={600}>{formatUTC12HourTime(emp.inTime)}</Text>
                                     </Group>
                                   )}
                                   {emp.outTime && (
-                                    <Group gap={4} px={8} py={2} bg="white" style={{ borderRadius: '4px', border: '1px solid #eee' }}>
+                                    <Group gap={4} px={8} py={2} bg="var(--mantine-color-body)" style={{ borderRadius: '4px', border: '1px solid var(--mantine-color-default-border)' }}>
                                       <Text size="9px" fw={800} c="gray.7" tt="uppercase">Out</Text>
                                       <Text size="xs" ff="monospace" fw={600}>{formatUTC12HourTime(emp.outTime)}</Text>
                                     </Group>
@@ -1272,7 +1446,7 @@ function Dashboard({ isCollapsed }) {
 
           <UniversalTabs.Panel value="logs" pt="xl">
             <Stack gap="lg">
-              <Paper withBorder p="xl" radius="lg" style={{ background: 'white' }}>
+              <Paper withBorder p="xl" radius="lg" style={{ background: 'var(--mantine-color-body)' }}>
                 <Stack gap="xl">
                   <Group justify="space-between" align="center">
                     <div>
@@ -1288,7 +1462,7 @@ function Dashboard({ isCollapsed }) {
                         size="md"
                         radius="md"
                         w={350}
-                        styles={{ input: { background: '#f8f9fa' } }}
+                        styles={{ input: { background: isDark ? 'var(--mantine-color-dark-5)' : '#f8f9fa' } }}
                       />
                     </Group>
                   </Group>

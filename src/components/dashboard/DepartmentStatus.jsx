@@ -15,6 +15,7 @@ import {
     Avatar,
     Box,
     useMantineTheme,
+    useComputedColorScheme,
     Button
 } from '@mantine/core'
 import { memo } from 'react'
@@ -31,6 +32,7 @@ import { formatUTC12HourTime } from '@/utils/dateFormatting'
 
 export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
     const theme = useMantineTheme()
+    const isDark = useComputedColorScheme('light') === 'dark'
     const { present, late, absent, total } = dept.summary
     const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0
 
@@ -65,19 +67,23 @@ export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
             mb="md"
             style={{
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                border: isExpanded ? `1px solid ${theme.colors.blue[3]}` : '1px solid #f1f3f5',
+                border: isExpanded
+                    ? `1px solid ${isDark ? theme.colors.blue[8] : theme.colors.blue[3]}`
+                    : '1px solid var(--mantine-color-default-border)',
                 boxShadow: isExpanded ? '0 12px 30px rgba(0,0,0,0.08)' : '0 4px 6px rgba(0,0,0,0.01)',
                 overflow: 'hidden',
                 contain: 'content'
             }}
         >
             <Box
-                px="xl"
-                py="lg"
+                px={{ base: 'md', sm: 'xl' }}
+                py={{ base: 'md', sm: 'lg' }}
                 onClick={onToggle}
                 style={{
                     cursor: 'pointer',
-                    background: isExpanded ? theme.colors.blue[0] : 'white',
+                    background: isExpanded
+                        ? (isDark ? 'rgba(34, 139, 230, 0.12)' : theme.colors.blue[0])
+                        : 'var(--mantine-color-body)',
                     transition: 'background 0.2s ease'
                 }}
             >
@@ -143,10 +149,63 @@ export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
             </Box>
 
             <Collapse in={isExpanded}>
-                <Box p="xl" style={{ background: 'white' }}>
-                    <Divider mb="xl" label={<Text size="xs" fw={700} c="dimmed">DEPARTMENT ROSTER</Text>} labelPosition="left" />
+                <Box p={{ base: 'md', sm: 'xl' }} style={{ background: 'var(--mantine-color-body)' }}>
+                    <Divider mb={{ base: 'md', sm: 'xl' }} label={<Text size="xs" fw={700} c="dimmed">DEPARTMENT ROSTER</Text>} labelPosition="left" />
 
-                    <Table verticalSpacing="md" highlightOnHover style={{ borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+                    {/* Mobile: stacked roster cards (table doesn't fit) */}
+                    <Stack gap="xs" hiddenFrom="sm">
+                        {dept.employees.map((emp) => {
+                            const statusInfo = getStatusInfo(emp.status)
+                            const empInitials = emp.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+
+                            return (
+                                <Card
+                                    key={emp.id}
+                                    component={Link}
+                                    href={`/employees/${emp.id}`}
+                                    withBorder
+                                    radius="md"
+                                    p="sm"
+                                    style={{ textDecoration: 'none' }}
+                                >
+                                    <Group justify="space-between" wrap="nowrap" align="center" gap="xs">
+                                        <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                                            <Avatar radius="md" size="md" color={statusInfo.color} variant="light" fw={700}>
+                                                {empInitials}
+                                            </Avatar>
+                                            <div style={{ minWidth: 0 }}>
+                                                <Text fw={700} size="sm" truncate style={{ lineHeight: 1.2 }}>{emp.name}</Text>
+                                                <Text size="10px" c="dimmed" fw={600} tt="uppercase" truncate>
+                                                    ID: {emp.employeeId} · {emp.schedule}
+                                                </Text>
+                                            </div>
+                                        </Group>
+                                        <Stack gap={4} align="flex-end" style={{ flexShrink: 0 }}>
+                                            <Badge
+                                                color={statusInfo.color}
+                                                variant="light"
+                                                size="sm"
+                                                radius="sm"
+                                                styles={{ root: { textTransform: 'none', fontWeight: 700 } }}
+                                            >
+                                                {statusInfo.label}
+                                            </Badge>
+                                            {emp.inTime && (
+                                                <Group gap={4}>
+                                                    <Text size="xs" fw={800} ff="monospace" c={statusInfo.color === 'red' || statusInfo.color === 'orange' ? statusInfo.color : undefined}>
+                                                        {formatUTC12HourTime(emp.inTime)}
+                                                    </Text>
+                                                    <Text size="10px" fw={700} c="dimmed" tt="uppercase">In</Text>
+                                                </Group>
+                                            )}
+                                        </Stack>
+                                    </Group>
+                                </Card>
+                            )
+                        })}
+                    </Stack>
+
+                    <Table visibleFrom="sm" verticalSpacing="md" highlightOnHover style={{ borderCollapse: 'separate', borderSpacing: '0 8px' }}>
                         <Table.Thead>
                             <Table.Tr>
                                 <Table.Th style={{ border: 'none', color: theme.colors.gray[6], fontSize: '11px', textTransform: 'uppercase', fontWeight: 800 }}>Employee Info</Table.Th>
@@ -211,7 +270,7 @@ export const DepartmentStatusCard = memo(({ dept, isExpanded, onToggle }) => {
                                         <Table.Td style={{ border: 'none' }}>
                                             {emp.inTime ? (
                                                 <Group gap={4}>
-                                                    <Text size="xs" fw={800} ff="monospace" c={statusInfo.color === 'red' || statusInfo.color === 'orange' ? statusInfo.color : 'dark'}>
+                                                    <Text size="xs" fw={800} ff="monospace" c={statusInfo.color === 'red' || statusInfo.color === 'orange' ? statusInfo.color : undefined}>
                                                         {formatUTC12HourTime(emp.inTime)}
                                                     </Text>
                                                     <Text size="10px" fw={700} c="dimmed" tt="uppercase">In</Text>

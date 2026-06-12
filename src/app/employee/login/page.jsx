@@ -3,9 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Container,
-  Paper,
-  Title,
   TextInput,
   PasswordInput,
   Button,
@@ -13,10 +10,55 @@ import {
   Text,
   Alert,
   Center,
-  Box,
+  Loader,
 } from '@mantine/core'
-import { IconAlertCircle, IconLogin } from '@tabler/icons-react'
+import { IconAlertCircle, IconFingerprint, IconArrowRight } from '@tabler/icons-react'
 import { useAuth } from '@/contexts/AuthContext'
+import classes from '../auth.module.css'
+
+function LiveClock() {
+  const [now, setNow] = useState(null)
+
+  useEffect(() => {
+    // first tick via rAF so the placeholder swaps right after hydration
+    const raf = requestAnimationFrame(() => setNow(new Date()))
+    const timer = setInterval(() => setNow(new Date()), 1000)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearInterval(timer)
+    }
+  }, [])
+
+  const pad = (n) => String(n).padStart(2, '0')
+
+  return (
+    <div className={classes.clock}>
+      <div className={classes.clockTime}>
+        {now ? (
+          <>
+            {pad(now.getHours())}
+            <span className={classes.clockColon}>:</span>
+            {pad(now.getMinutes())}
+            <span className={classes.clockColon}>:</span>
+            {pad(now.getSeconds())}
+          </>
+        ) : (
+          '--:--:--'
+        )}
+      </div>
+      <div className={classes.clockDate}>
+        {now
+          ? now.toLocaleDateString('en-US', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })
+          : ' '}
+      </div>
+    </div>
+  )
+}
 
 export default function EmployeeLoginPage() {
   const [identifier, setIdentifier] = useState('')
@@ -50,7 +92,7 @@ export default function EmployeeLoginPage() {
 
     try {
       const result = await login(identifier, password)
-      
+
       // Redirect based on privilege
       if (result.user.isAdmin) {
         router.push('/')
@@ -63,7 +105,7 @@ export default function EmployeeLoginPage() {
         router.push(`/employee/setup-password?zkUserId=${identifier}`)
         return
       }
-      
+
       // Check if password reset is required
       if (err.message.includes('Password reset required') || err.message.includes('requiresReset')) {
         router.push(`/employee/setup-password?zkUserId=${identifier}&reset=true`)
@@ -79,36 +121,84 @@ export default function EmployeeLoginPage() {
   if (authLoading) {
     return (
       <Center style={{ minHeight: '100vh' }}>
-        <Text>Loading...</Text>
+        <Loader size="sm" />
       </Center>
     )
   }
 
   return (
-    <Box
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-      }}
-    >
-      <Container size="xs">
-        <Paper shadow="xl" p="xl" radius="md">
-          <Stack gap="lg">
+    <div className={classes.shell}>
+      {/* ── Brand panel (desktop) ── */}
+      <div className={classes.brandPanel}>
+        <div className={classes.dotGrid} />
+
+        <div className={classes.brandContent}>
+          <div className={classes.brandMark}>
+            <div className={classes.brandIcon}>
+              <IconFingerprint size={26} stroke={1.6} />
+            </div>
             <div>
-              <Title order={1} ta="center" mb="xs">
-                Employee Portal
-              </Title>
-              <Text c="dimmed" size="sm" ta="center">
-                Sign in to access your profile and attendance
+              <div className={classes.brandName}>ZK HR</div>
+              <div className={classes.brandTag}>Attendance OS</div>
+            </div>
+          </div>
+
+          <h1 className={classes.headline}>
+            Every second,
+            <br />
+            <span className={classes.headlineAccent}>accounted for.</span>
+          </h1>
+          <p className={classes.subline}>
+            Biometric attendance, schedules, and leave — synced live from your ZK
+            device to one workspace.
+          </p>
+        </div>
+
+        <div>
+          <LiveClock />
+          <div className={classes.chipRow}>
+            <span className={classes.chip}>
+              <span className={classes.chipDot} />
+              Biometric sync
+            </span>
+            <span className={classes.chip}>Live attendance</span>
+            <span className={classes.chip}>Leave &amp; shifts</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Form panel ── */}
+      <div className={classes.formPanel}>
+        <div className={classes.formColumn}>
+          <div className={classes.mobileBrand}>
+            <div className={classes.brandIcon}>
+              <IconFingerprint size={24} stroke={1.6} />
+            </div>
+            <div>
+              <Text fw={700} size="md" lh={1.2}>
+                ZK HR
               </Text>
+              <Text size="xs" c="dimmed" tt="uppercase" style={{ letterSpacing: 2 }}>
+                Attendance OS
+              </Text>
+            </div>
+          </div>
+
+          <Stack gap="xl">
+            <div className={`${classes.fadeUp} ${classes.delay1}`}>
+              <h2 className={classes.formTitle}>Welcome back</h2>
+              <p className={classes.formSubtitle}>
+                Sign in to access your profile, attendance, and leave requests.
+              </p>
             </div>
 
             {error && (
-              <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                color="red"
+                radius="md"
+                title="Sign-in failed"
+              >
                 {error}
               </Alert>
             )}
@@ -117,11 +207,13 @@ export default function EmployeeLoginPage() {
               <Stack gap="md">
                 <TextInput
                   label="ZK User ID or Email"
-                  placeholder="Enter your ZK User ID or email"
+                  placeholder="e.g. 1024 or you@company.com"
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   size="md"
+                  radius="md"
+                  classNames={{ root: `${classes.fadeUp} ${classes.delay2}`, wrapper: classes.input }}
                 />
 
                 <PasswordInput
@@ -131,33 +223,40 @@ export default function EmployeeLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   size="md"
+                  radius="md"
+                  classNames={{ root: `${classes.fadeUp} ${classes.delay3}`, wrapper: classes.input }}
                 />
 
                 <Button
                   type="submit"
                   fullWidth
                   size="md"
+                  radius="md"
+                  mt="xs"
                   loading={loading}
-                  leftSection={<IconLogin size={18} />}
+                  rightSection={<IconArrowRight size={18} />}
+                  className={`${classes.submitButton} ${classes.fadeUp} ${classes.delay4}`}
                 >
-                  Sign In
+                  Sign in
                 </Button>
               </Stack>
             </form>
 
-            <Text size="sm" c="dimmed" ta="center">
-              First time logging in? Enter your ZK User ID to set up your password.
-            </Text>
-
-            <Text size="xs" c="dimmed" ta="center">
-              Need help? Contact your HR administrator.
-            </Text>
+            <Stack gap="sm" className={`${classes.fadeUp} ${classes.delay4}`}>
+              <div className={classes.helpDivider}>
+                <span className={classes.helpDividerLabel}>First time here?</span>
+              </div>
+              <Text size="sm" c="dimmed" ta="center">
+                Enter your ZK User ID above and we&apos;ll walk you through setting a
+                password.
+              </Text>
+              <Text size="xs" c="dimmed" ta="center">
+                Need help? Contact your HR administrator.
+              </Text>
+            </Stack>
           </Stack>
-        </Paper>
-      </Container>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }
-
-
-

@@ -412,7 +412,8 @@ export default function DepartmentsPage() {
                 </Box>
                 <Divider variant="dashed" />
                 <Box style={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.06)' }}>
-                  <Table verticalSpacing="lg" horizontalSpacing="xl" highlightOnHover style={{ backgroundColor: '#fff' }}>
+                  <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <Table verticalSpacing="lg" horizontalSpacing="xl" highlightOnHover style={{ backgroundColor: '#fff', minWidth: 560 }}>
                     <Table.Thead>
                       <Table.Tr style={{ backgroundColor: 'rgba(0,0,0,0.01)' }}>
                         <Table.Th><Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Department</Text></Table.Th>
@@ -430,6 +431,7 @@ export default function DepartmentsPage() {
                       )}
                     </Table.Tbody>
                   </Table>
+                  </Box>
                 </Box>
               </Stack>
             </Paper>

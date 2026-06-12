@@ -785,6 +785,7 @@ export default function DeviceConfigPage() {
         <Stack gap="md">
           <Title order={4}>Existing Schedules</Title>
           <Paper withBorder>
+            <Table.ScrollContainer minWidth={720}>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
                 <Table.Tr>
@@ -806,6 +807,7 @@ export default function DeviceConfigPage() {
                 )}
               </Table.Tbody>
             </Table>
+            </Table.ScrollContainer>
           </Paper>
         </Stack>
       </Paper>

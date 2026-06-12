@@ -283,6 +283,7 @@ export default function AttendanceOutlierPage() {
                 {lateDays.length === 0 ? (
                   <Text c="dimmed">Loading details...</Text>
                 ) : (
+                  <Table.ScrollContainer minWidth={680}>
                   <Table striped highlightOnHover withTableBorder withColumnBorders>
                     <Table.Thead>
                       <Table.Tr>
@@ -402,6 +403,7 @@ export default function AttendanceOutlierPage() {
                       })}
                     </Table.Tbody>
                   </Table>
+                  </Table.ScrollContainer>
                 )}
               </Paper>
             </Table.Td>
@@ -481,6 +483,7 @@ export default function AttendanceOutlierPage() {
 
               <Paper withBorder pos="relative">
                 <LoadingOverlay visible={lateArrivalLoading} />
+                <Table.ScrollContainer minWidth={640}>
                 <Table striped highlightOnHover withTableBorder withColumnBorders>
                   <Table.Thead>
                     <Table.Tr>
@@ -504,6 +507,7 @@ export default function AttendanceOutlierPage() {
                     )}
                   </Table.Tbody>
                 </Table>
+                </Table.ScrollContainer>
               </Paper>
             </Stack>
           </Paper>

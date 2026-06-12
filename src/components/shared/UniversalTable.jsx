@@ -1,19 +1,21 @@
 'use client'
 import { Paper, Table } from '@mantine/core'
 
-export function UniversalTable({ children, ...props }) {
+export function UniversalTable({ children, minWidth = 640, ...props }) {
     return (
         <Paper withBorder radius="lg" style={{ overflow: 'hidden' }}>
-            <Table striped highlightOnHover verticalSpacing="sm" {...props}>
-                {children}
-            </Table>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <Table striped highlightOnHover verticalSpacing="sm" style={{ minWidth }} {...props}>
+                    {children}
+                </Table>
+            </div>
         </Paper>
     )
 }
 
 export function UniversalTableHeader({ children, ...props }) {
     return (
-        <Table.Thead style={{ backgroundColor: 'var(--mantine-color-gray-0)' }} {...props}>
+        <Table.Thead style={{ backgroundColor: 'var(--mantine-color-default-hover)' }} {...props}>
             {children}
         </Table.Thead>
     )

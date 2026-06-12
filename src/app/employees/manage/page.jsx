@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid, Box, Badge, Skeleton, Avatar, Tooltip, ThemeIcon } from '@mantine/core'
+import { Container, Title, Paper, Text, TextInput, Button, Group, Table, Modal, ActionIcon, Stack, Select, Switch, Divider, Grid, Box, Badge, Skeleton, Avatar, Tooltip, ThemeIcon, useComputedColorScheme } from '@mantine/core'
 import { IconEdit, IconCalendar, IconSearch, IconLockOpen, IconBriefcase, IconUsers } from '@tabler/icons-react'
 import { showSuccess, showError } from '@/utils/notifications'
 import { useForm } from '@mantine/form'
@@ -13,6 +13,7 @@ import { PRIVILEGE_OPTIONS } from '@/utils/employeeUtils'
 import { useDepartmentOptions } from '@/hooks/useDepartmentOptions'
 
 export default function EmployeeManagementPage() {
+  const isDark = useComputedColorScheme('light') === 'dark'
   const [employees, setEmployees] = useState([])
   const [empLoading, setEmpLoading] = useState(false)
   const { options: deptOptions } = useDepartmentOptions()
@@ -331,7 +332,7 @@ export default function EmployeeManagementPage() {
   const empRows = empSorted.map((e) => {
     const initials = `${e.first_name?.[0] || ''}${e.last_name?.[0] || ''}`.toUpperCase()
     return (
-      <Table.Tr key={e.id} style={{ transition: 'all 0.2s ease', borderBottom: '1px solid rgba(0,0,0,0.03)' }}>
+      <Table.Tr key={e.id} style={{ transition: 'all 0.2s ease', borderBottom: isDark ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(0,0,0,0.03)' }}>
         <Table.Td>
           <Group gap="sm" wrap="nowrap">
             <Avatar size="md" radius="xl" color="blue" variant="light" src={null} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
@@ -432,15 +433,15 @@ export default function EmployeeManagementPage() {
   })
 
   return (
-    <Container size="xl" py="40px">
+    <Container fluid px={{ base: 'md', sm: 'xl', lg: 40 }} py="32px">
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <Box>
-            <Title order={1} fw={900} style={{ letterSpacing: '-1.5px', fontSize: '38px', color: 'var(--mantine-color-blue-9)' }}>
+            <Title order={1} fw={900} style={{ letterSpacing: '-1.5px', fontSize: '38px', color: isDark ? '#f1f5fb' : '#101828' }}>
               Team Directory
             </Title>
             <Text c="dimmed" size="md" fw={500} mt={4} style={{ maxWidth: 500 }}>
-              Manage your organization&apos;s workforce, schedules, and access privileges from a centralized high-fidelity interface.
+              Manage your organization&apos;s workforce, schedules, and access privileges in one place.
             </Text>
           </Box>
           <Button
@@ -460,40 +461,93 @@ export default function EmployeeManagementPage() {
 
         <Grid gutter="md">
           <Grid.Col span={{ base: 12, md: 4 }}>
-            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
-              <Group justify="space-between">
+            <Paper
+              p="xl"
+              radius={20}
+              h="100%"
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                border: '1px solid rgba(102, 217, 232, 0.12)',
+                background: `
+                  radial-gradient(400px 200px at 90% -30%, rgba(34, 139, 230, 0.35), transparent 65%),
+                  linear-gradient(160deg, #0a1428 0%, #060b18 70%, #081020 100%)
+                `,
+              }}
+            >
+              <Box
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundImage: 'radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)',
+                  backgroundSize: '22px 22px',
+                  maskImage: 'radial-gradient(ellipse 90% 100% at 80% 0%, black 30%, transparent 80%)',
+                  WebkitMaskImage: 'radial-gradient(ellipse 90% 100% at 80% 0%, black 30%, transparent 80%)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <Group justify="space-between" style={{ position: 'relative' }}>
                 <div>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Total Force</Text>
-                  <Title order={2} fw={900}>{employees.length}</Title>
+                  <Text size="xs" tt="uppercase" fw={800} ls={1.5} style={{ color: 'rgba(148, 184, 230, 0.75)' }}>
+                    Total Workforce
+                  </Text>
+                  <Title order={2} fw={900} style={{ color: '#f1f5fb', fontSize: 38, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
+                    {employees.length}
+                  </Title>
                 </div>
-                <ThemeIcon size={52} radius="xl" variant="light" color="blue">
-                  <IconUsers size={28} />
+                <ThemeIcon
+                  size={52}
+                  radius={16}
+                  variant="light"
+                  style={{
+                    color: '#66d9e8',
+                    background: 'linear-gradient(145deg, rgba(34,139,230,0.25), rgba(21,170,191,0.15))',
+                    border: '1px solid rgba(102, 217, 232, 0.25)',
+                    boxShadow: '0 0 20px rgba(34, 139, 230, 0.4)',
+                  }}
+                >
+                  <IconUsers size={28} stroke={1.6} />
                 </ThemeIcon>
               </Group>
             </Paper>
           </Grid.Col>
           <Grid.Col span={{ base: 12, md: 4 }}>
-            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
-              <Group justify="space-between">
+            <Paper p="xl" radius={20} h="100%" style={{ border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #e9edf3', backgroundColor: isDark ? 'var(--mantine-color-dark-6)' : '#fff', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }}>
+              <Group justify="space-between" align="flex-start">
                 <div>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Active Members</Text>
-                  <Title order={2} fw={900} c="teal">{employees.filter(e => e.is_active).length}</Title>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1.5}>Active Members</Text>
+                  <Title order={2} fw={900} c="teal.7" style={{ fontSize: 38, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
+                    {employees.filter(e => e.is_active).length}
+                  </Title>
                 </div>
-                <ThemeIcon size={52} radius="xl" variant="light" color="teal">
+                <ThemeIcon size={52} radius={16} variant="light" color="teal">
                   <Box style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: 'var(--mantine-color-teal-filled)', boxShadow: '0 0 10px var(--mantine-color-teal-filled)' }} />
                 </ThemeIcon>
               </Group>
+              <Box mt={14} style={{ height: 5, borderRadius: 100, backgroundColor: isDark ? 'var(--mantine-color-dark-4)' : 'var(--mantine-color-gray-1)', overflow: 'hidden' }}>
+                <Box
+                  style={{
+                    height: '100%',
+                    borderRadius: 100,
+                    width: `${employees.length ? Math.round((employees.filter(e => e.is_active).length / employees.length) * 100) : 0}%`,
+                    background: 'linear-gradient(90deg, var(--mantine-color-teal-5), var(--mantine-color-cyan-4))',
+                    transition: 'width 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
+                />
+              </Box>
             </Paper>
           </Grid.Col>
           <Grid.Col span={{ base: 12, md: 4 }}>
-            <Paper p="xl" radius="24px" withBorder style={{ backgroundColor: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(20px)' }}>
+            <Paper p="xl" radius={20} h="100%" style={{ border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #e9edf3', backgroundColor: isDark ? 'var(--mantine-color-dark-6)' : '#fff', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }}>
               <Group justify="space-between">
                 <div>
-                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1}>Departments</Text>
-                  <Title order={2} fw={900}>{new Set(employees.map(e => e.department_id).filter(Boolean)).size}</Title>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={800} ls={1.5}>Departments</Text>
+                  <Title order={2} fw={900} style={{ fontSize: 38, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
+                    {new Set(employees.map(e => e.department_id).filter(Boolean)).size}
+                  </Title>
                 </div>
-                <ThemeIcon size={52} radius="xl" variant="light" color="orange">
-                  <IconBriefcase size={28} />
+                <ThemeIcon size={52} radius={16} variant="light" color="orange">
+                  <IconBriefcase size={28} stroke={1.6} />
                 </ThemeIcon>
               </Group>
             </Paper>
@@ -505,8 +559,8 @@ export default function EmployeeManagementPage() {
           radius="32px"
           p="32px"
           style={{
-            border: '1px solid rgba(0,0,0,0.06)',
-            backgroundColor: 'rgba(255,255,255,0.7)',
+            border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)',
+            backgroundColor: isDark ? 'rgba(26, 27, 30, 0.7)' : 'rgba(255,255,255,0.7)',
             backdropFilter: 'blur(16px)',
           }}
         >
@@ -523,13 +577,13 @@ export default function EmployeeManagementPage() {
                 style={{ flex: 1, maxWidth: 600 }}
                 styles={{
                   input: {
-                    backgroundColor: 'rgba(0,0,0,0.02)',
-                    border: '1px solid rgba(0,0,0,0.05)',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+                    border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.05)',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     fontWeight: 500,
                     fontSize: '16px',
                     '&:focus': {
-                      backgroundColor: '#fff',
+                      backgroundColor: isDark ? 'var(--mantine-color-dark-7)' : '#fff',
                       boxShadow: '0 8px 30px rgba(0, 0, 0, 0.1)',
                       borderColor: 'var(--mantine-color-blue-filled)',
                       transform: 'translateY(-2px)'
@@ -544,15 +598,16 @@ export default function EmployeeManagementPage() {
               )}
             </Group>
 
-            <Box style={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid rgba(0,0,0,0.06)' }}>
+            <Box style={{ overflow: 'hidden', borderRadius: '24px', border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)' }}>
+              <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <Table
                 verticalSpacing="lg"
                 horizontalSpacing="xl"
                 highlightOnHover
-                style={{ backgroundColor: '#fff' }}
+                style={{ backgroundColor: isDark ? 'var(--mantine-color-dark-7)' : '#fff', minWidth: 920 }}
               >
                 <Table.Thead>
-                  <Table.Tr style={{ backgroundColor: 'rgba(0,0,0,0.01)' }}>
+                  <Table.Tr style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)' }}>
                     <Table.Th onClick={() => toggleEmpSort('name')} style={{ cursor: 'pointer', py: '20px' }}>
                       <Group gap={8}>
                         <Text size="xs" fw={800} tt="uppercase" c="dimmed" ls={1.2}>Member</Text>
@@ -616,12 +671,13 @@ export default function EmployeeManagementPage() {
                   {!empLoading && employees.length > 0 && empSorted.length === 0 && searchQuery && (
                     <Table.Tr>
                       <Table.Td colSpan={7} ta="center" py="xl">
-                        <Text c="dimmed" fs="italic">No employees match "{searchQuery}"</Text>
+                        <Text c="dimmed" fs="italic">No employees match &quot;{searchQuery}&quot;</Text>
                       </Table.Td>
                     </Table.Tr>
                   )}
                 </Table.Tbody>
               </Table>
+              </Box>
             </Box>
           </Stack>
         </Paper>

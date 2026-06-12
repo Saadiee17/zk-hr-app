@@ -1,6 +1,6 @@
 'use client'
 
-import { Card, Stack, Text, Group } from '@mantine/core'
+import { Card, Stack, Text, Group, Box, Skeleton, useComputedColorScheme } from '@mantine/core'
 import { memo } from 'react'
 
 /**
@@ -22,7 +22,8 @@ export const MetricCard = memo(({
   clickable = false,
   onClick,
   size = 'lg',
-  icon: Icon
+  icon: Icon,
+  loading = false
 }) => {
   const sizeMap = {
     sm: 24,
@@ -32,17 +33,21 @@ export const MetricCard = memo(({
 
   const fontSize = sizeMap[size] || 42
   const isClickable = clickable || !!onClick
+  const isDark = useComputedColorScheme('light') === 'dark'
 
   return (
     <Card
       padding="lg"
-      radius="lg"
+      radius={16}
       withBorder={false}
       style={{
         cursor: isClickable ? 'pointer' : 'default',
-        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease',
-        background: 'rgba(255, 255, 255, 0.98)', // Significantly faster than backdrop-filter
-        border: '1px solid #f1f3f5',
+        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease',
+        background: isDark
+          ? 'var(--mantine-color-dark-6)'
+          : `linear-gradient(180deg, #ffffff 0%, var(--mantine-color-${color}-0) 160%)`,
+        border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid #e9edf3',
+        borderTop: `3px solid var(--mantine-color-${color}-5)`,
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.02)',
         height: '100%',
         display: 'flex',
@@ -68,15 +73,37 @@ export const MetricCard = memo(({
       <Stack gap="xs" justify="space-between" h="100%">
         <Group justify="space-between" align="flex-start">
           <Text size="xs" c="dimmed" fw={700} tt="uppercase" ls={1}>{label}</Text>
-          {Icon && <Icon size={20} stroke={1.5} color={`var(--mantine-color-${color}-6)`} />}
+          {Icon && (
+            <Box
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                backgroundColor: `var(--mantine-color-${color}-light)`,
+                color: `var(--mantine-color-${color}-light-color)`,
+              }}
+            >
+              <Icon size={18} stroke={1.7} />
+            </Box>
+          )}
         </Group>
 
         <Group align="flex-end" gap="xs">
-          <Text size={fontSize} fw={700} c="dark" lh={1} style={{ letterSpacing: '-1px' }}>{value}</Text>
+          {loading ? (
+            <Skeleton height={fontSize} width={72} radius="sm" />
+          ) : (
+            <Text size={fontSize} fw={800} lh={1} style={{ letterSpacing: '-1.5px', fontVariantNumeric: 'tabular-nums' }}>{value}</Text>
+          )}
         </Group>
 
         {description && (
-          <Text size="sm" c="dimmed" lh={1.4}>{description}</Text>
+          <Group gap={6} align="center">
+            <Box w={6} h={6} style={{ borderRadius: '50%', backgroundColor: `var(--mantine-color-${color}-5)` }} />
+            <Text size="sm" c="dimmed" lh={1.4}>{description}</Text>
+          </Group>
         )}
       </Stack>
     </Card>
